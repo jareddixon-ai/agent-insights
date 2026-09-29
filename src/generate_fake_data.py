@@ -49,6 +49,60 @@ def make_agents(rng):
     )
     return agents, skills
 
+N_SALES = 5000
+ZIPS = ["90101", "90102", "90103", "90104", "90105", "90106", "90107", "90108", "90109", "90110"]
+
+
+def make_homes(rng):
+    """Build 5,000 fake homes and their true market value (what each home is worth
+    before any agent skill). The true value is the answer key for later steps."""
+    n = N_SALES
+
+    zip_code = rng.choice(ZIPS, size=n)
+    # Each zip has its own price level (a multiplier on value, in log terms).
+    zip_effect = dict(zip(ZIPS, rng.normal(0.0, 0.25, len(ZIPS))))
+
+    # Size: most homes near 1,800 sqft, a few very large ones.
+    sqft = np.clip(rng.lognormal(np.log(1800), 0.35, n), 600, 6000).round(-1).astype(int)
+    # Bedrooms and bathrooms grow with size (plus randomness).
+    beds = np.clip(np.round(sqft / 600 + rng.normal(0, 0.7, n)), 1, 7).astype(int)
+    baths = np.clip(np.round((beds * 0.7 + rng.normal(0.3, 0.6, n)) * 2) / 2, 1, 6)
+    lot_sqft = np.clip(rng.lognormal(np.log(6500), 0.5, n), 1500, 40000).round(-2).astype(int)
+    year_built = rng.integers(1925, 2024, n)
+    age = 2024 - year_built
+
+    # "Quality" = things we can't see in the data (condition, view, finishes).
+    # It changes the price but no column records it.
+    quality = rng.normal(0.0, 0.08, n)
+
+    # Log price = sum of effects. (Log means each effect is a % change, which
+    # matches how we describe agent skill, in %.)
+    log_value = (
+        13.45
+        + np.array([zip_effect[z] for z in zip_code])
+        + 0.75 * np.log(sqft / 1800)
+        + 0.03 * (beds - 3)
+        + 0.06 * (baths - 2)
+        + 0.10 * np.log(lot_sqft / 6500)
+        - 0.002 * age
+        + quality
+    )
+
+    homes = pd.DataFrame(
+        {
+            "listing_id": [f"L{i:05d}" for i in range(1, n + 1)],
+            "zip": zip_code,
+            "beds": beds,
+            "baths": baths,
+            "sqft": sqft,
+            "lot_sqft": lot_sqft,
+            "year_built": year_built,
+            "true_value": np.exp(log_value).round(-3),
+            "quality": quality.round(4),
+        }
+    )
+    return homes
+
 
 def main():
     rng = np.random.default_rng(SEED)  # the random number generator
@@ -57,6 +111,12 @@ def main():
     agents, skills = make_agents(rng)
     agents.to_csv(OUT_DIR / "agents.csv", index=False)
     skills.to_csv(OUT_DIR / "true_skills.csv", index=False)
+
+    homes = make_homes(rng)
+    print("Homes:", len(homes))
+    print(homes[["sqft", "beds", "baths", "lot_sqft", "true_value"]].describe().round(0).to_string())
+    print(homes.groupby("zip")["true_value"].median().round(-3).to_string())
+    print()
 
     print("Agents:", len(agents))
     print(agents["office"].value_counts().sort_index().to_string())
