@@ -11,6 +11,11 @@ OFFICES = ["Office A", "Office B", "Office C"]
 N_TEAMS = 8
 SHARE_ON_A_TEAM = 0.40  # the other 60% work solo
 OUT_DIR = Path("data/fake")
+START_DATE = "2023-10-01"  # earliest list date (about 3 years of listings)
+N_LIST_DAYS = 1003  # list dates run to mid-2026
+SELECTION_STRENGTH = 0.4  # how strongly better agents get pricier homes
+NO_BUYER_AGENT_SHARE = 0.08  # share of sales where the buyer had no agent
+STREETS = ["Oak", "Maple", "Cedar", "Pine", "Elm", "Birch", "Willow", "Aspen"]
 
 
 def make_agents(rng):
@@ -47,7 +52,10 @@ def make_agents(rng):
             "buyer_savings": buyer_savings.round(4),
         }
     )
-    return agents, skills
+    # Hidden "busyness": some agents get many deals, some very few.
+    # Veterans are a bit busier. Not saved to any file (real data has no such column).
+    activity = rng.lognormal(0.0, 1.0, N_AGENTS) * (0.5 + years / 15)
+    return agents, skills, activity
 
 N_SALES = 5000
 ZIPS = ["90101", "90102", "90103", "90104", "90105", "90106", "90107", "90108", "90109", "90110"]
@@ -104,25 +112,129 @@ def make_homes(rng):
     return homes
 
 
+def pick_agents(rng, activity, skill, home_z, strength):
+    """For each home, pick one agent. Busier agents are picked more often, and
+    better agents are more likely to be picked for pricier homes (selection bias)."""
+    skill_z = (skill - skill.mean()) / skill.std()
+    # score[home, agent] = how likely that agent is to get that home
+    score = activity[None, :] * np.exp(strength * home_z[:, None] * skill_z[None, :])
+    cdf = np.cumsum(score / score.sum(axis=1, keepdims=True), axis=1)
+    u = rng.random(len(home_z))[:, None]
+    return np.minimum((u > cdf).sum(axis=1), len(skill) - 1)  # index of chosen agent
+
+
+def make_sales(rng, homes, agents, skills, activity):
+    """Turn homes into sales: pick agents, add dates, prices, list-price games."""
+    n = len(homes)
+    home_z = ((np.log(homes["true_value"]) - np.log(homes["true_value"]).mean())
+              / np.log(homes["true_value"]).std()).to_numpy()
+
+    # Who sold it, and who bought it.
+    li = pick_agents(rng, activity, skills["seller_premium"].to_numpy(), home_z, SELECTION_STRENGTH)
+    bi = pick_agents(rng, activity, skills["buyer_savings"].to_numpy(), home_z, SELECTION_STRENGTH)
+    bi = np.where(bi == li, (bi + 1) % len(agents), bi)  # an agent can't be on both sides
+    has_buyer_agent = rng.random(n) >= NO_BUYER_AGENT_SHARE
+
+    # Dates. Days on market is random (about a month on average).
+    list_date = pd.Timestamp(START_DATE) + pd.to_timedelta(rng.integers(0, N_LIST_DAYS, n), unit="D")
+
+    # Each listing agent has a pricing style: some list low to spark bidding,
+    # some list high. Hidden, and it does not change what the home sells for.
+    style = rng.normal(0.0, 0.04, len(agents))
+    list_bias = style[li] + rng.normal(0.0, 0.02, n)
+    n_changes = np.where(list_bias > 0.02, np.minimum(rng.poisson(1 + np.maximum(list_bias, 0) * 30), 4), 0)
+    days = np.maximum(3, rng.gamma(2.0, 15.0, n) + 12 * n_changes).astype(int)
+    sold_date = list_date + pd.to_timedelta(days, unit="D")
+
+    # Market effect: a spring bump and a slow upward trend. Not the agent's doing.
+    month = sold_date.month.to_numpy()
+    years_in = (sold_date - pd.Timestamp(START_DATE)).days.to_numpy() / 365
+    market = np.exp(0.03 * np.cos(2 * np.pi * (month - 5) / 12) + 0.04 * years_in)
+
+    # Sold price: true value, times the market, times BOTH agents' effects.
+    seller_effect = 1 + skills["seller_premium"].to_numpy()[li]
+    buyer_effect = np.where(has_buyer_agent, 1 - skills["buyer_savings"].to_numpy()[bi], 1.0)
+    noise = np.exp(rng.normal(0.0, 0.02, n))  # bidding luck, small
+    sold_price = homes["true_value"].to_numpy() * market * seller_effect * buyer_effect * noise
+
+    original_list = sold_price * (1 + list_bias)
+    final_list = original_list * (0.97 ** n_changes)
+
+    sales = pd.DataFrame(
+        {
+            "listing_id": homes["listing_id"],
+            "address": [f"{a} Demo {STREETS[b]} St" for a, b in
+                        zip(rng.integers(100, 9999, n), rng.integers(0, len(STREETS), n))],
+            "zip": homes["zip"],
+            "beds": homes["beds"],
+            "baths": homes["baths"],
+            "sqft": homes["sqft"],
+            "lot_sqft": homes["lot_sqft"],
+            "year_built": homes["year_built"],
+            "list_date": list_date.date,
+            "original_list_price": original_list.round(-3),
+            "final_list_price": final_list.round(-3),
+            "num_price_changes": n_changes,
+            "sold_date": sold_date.date,
+            "sold_price": sold_price.round(-3),
+            "days_on_market": days,
+            "listing_agent_id": agents["agent_id"].to_numpy()[li],
+            "buyer_agent_id": np.where(has_buyer_agent, agents["agent_id"].to_numpy()[bi], ""),
+            "office": agents["office"].to_numpy()[li],
+            "team": agents["team"].to_numpy()[li],
+        }
+    )
+    return sales
+
+
+def run_checks(sales, homes, skills):
+    """Quick sanity checks. Stops the script if something is clearly wrong."""
+    assert len(sales) == N_SALES
+    assert sales["listing_id"].is_unique
+    assert (sales["sold_price"] > 0).all()
+    assert (pd.to_datetime(sales["sold_date"]) > pd.to_datetime(sales["list_date"])).all()
+    assert (sales["listing_agent_id"] != sales["buyer_agent_id"]).all()
+    key_cols = ["zip", "sold_price", "listing_agent_id", "list_date", "sold_date"]
+    assert sales[key_cols].notna().all().all()
+
+    per_agent = sales["listing_agent_id"].value_counts()
+    print("\nSALES CHECKS")
+    print("Sales:", len(sales), "| Agents with 1+ listing:", per_agent.size)
+    print("Listings per agent: min", per_agent.min(), "median", int(per_agent.median()),
+          "max", per_agent.max(), "| agents with under 5:", int((per_agent < 5).sum()))
+    print("No buyer agent:", int((sales["buyer_agent_id"] == "").sum()), "sales")
+
+    # Selection bias check: do better agents get pricier homes?
+    d = sales.merge(homes[["listing_id", "true_value"]], on="listing_id")
+    d["ratio"] = d["sold_price"] / d["true_value"]  # 1.02 means sold 2% above true value
+    by_agent = d.groupby("listing_agent_id").agg(
+        mean_value=("true_value", "mean"),
+        mean_ratio=("ratio", "mean"),
+    )
+    by_agent = by_agent.join(skills.set_index("agent_id"))
+    print("Correlation, seller skill vs average home value (bias, should be > 0):",
+          round(by_agent["seller_premium"].corr(by_agent["mean_value"]), 2))
+    print("Correlation, seller skill vs sold/true value (should be strongly > 0):",
+          round(by_agent["seller_premium"].corr(by_agent["mean_ratio"]), 2))
+    print("Sold price range:", int(sales["sold_price"].min()), "to", int(sales["sold_price"].max()))
+
+
 def main():
     rng = np.random.default_rng(SEED)  # the random number generator
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    agents, skills = make_agents(rng)
-    agents.to_csv(OUT_DIR / "agents.csv", index=False)
-    skills.to_csv(OUT_DIR / "true_skills.csv", index=False)
-
+    agents, skills, activity = make_agents(rng)
     homes = make_homes(rng)
-    print("Homes:", len(homes))
-    print(homes[["sqft", "beds", "baths", "lot_sqft", "true_value"]].describe().round(0).to_string())
-    print(homes.groupby("zip")["true_value"].median().round(-3).to_string())
-    print()
+    sales = make_sales(rng, homes, agents, skills, activity)
+    run_checks(sales, homes, skills)
 
-    print("Agents:", len(agents))
-    print(agents["office"].value_counts().sort_index().to_string())
-    print("On a team:", (agents["team"] != "").sum(), "| Solo:", (agents["team"] == "").sum())
-    print("Years licensed: min", agents["years_licensed"].min(), "max", agents["years_licensed"].max())
-    print(skills[["seller_premium", "buyer_savings"]].describe().round(4).to_string())
+    # Public files: what a brokerage would really have.
+    agents.to_csv(OUT_DIR / "agents.csv", index=False)
+    sales.to_csv(OUT_DIR / "sales.csv", index=False)
+    # Answer keys: only exist in fake data. Used to grade the model later.
+    skills.to_csv(OUT_DIR / "true_skills.csv", index=False)
+    homes[["listing_id", "true_value", "quality"]].to_csv(OUT_DIR / "true_home_values.csv", index=False)
+    print("\nSaved 4 files in", OUT_DIR)
 
 
 if __name__ == "__main__":
