@@ -58,7 +58,22 @@ def make_agents(rng):
     return agents, skills, activity
 
 N_SALES = 5000
-ZIPS = ["90101", "90102", "90103", "90104", "90105", "90106", "90107", "90108", "90109", "90110"]
+# Real Santa Barbara-area zip codes. The number is a rough price level for that area,
+# in log terms (0.50 means about 65% above the baseline, -0.15 about 14% below it).
+ZIP_EFFECTS = {
+    "93108": 0.50,   # Montecito: the priciest
+    "93110": 0.20,   # Hope Ranch / Upper State
+    "93067": 0.10,   # Summerland
+    "93109": 0.00,   # Mesa
+    "93105": -0.05,  # Upper East / San Roque
+    "93103": -0.05,  # Eastside / Riviera
+    "93101": -0.10,  # Downtown
+    "93111": -0.15,  # La Cumbre / Hollister
+    "93013": -0.15,  # Carpinteria
+    "93117": -0.20,  # Goleta
+}
+ZIPS = list(ZIP_EFFECTS)
+PRICE_FLOOR = 2_000_000  # nothing sells far below this in the target market
 
 
 def make_homes(rng):
@@ -67,34 +82,39 @@ def make_homes(rng):
     n = N_SALES
 
     zip_code = rng.choice(ZIPS, size=n)
-    # Each zip has its own price level (a multiplier on value, in log terms).
-    zip_effect = dict(zip(ZIPS, rng.normal(0.0, 0.25, len(ZIPS))))
+    zip_effect = ZIP_EFFECTS
 
-    # Size: most homes near 1,800 sqft, a few very large ones.
-    sqft = np.clip(rng.lognormal(np.log(1800), 0.35, n), 600, 6000).round(-1).astype(int)
+    # Size: most homes near 2,400 sqft, with a long tail of very large estates.
+    sqft = np.clip(rng.lognormal(np.log(2400), 0.45, n), 900, 15000).round(-1).astype(int)
     # Bedrooms and bathrooms grow with size (plus randomness).
     beds = np.clip(np.round(sqft / 600 + rng.normal(0, 0.7, n)), 1, 7).astype(int)
     baths = np.clip(np.round((beds * 0.7 + rng.normal(0.3, 0.6, n)) * 2) / 2, 1, 6)
-    lot_sqft = np.clip(rng.lognormal(np.log(6500), 0.5, n), 1500, 40000).round(-2).astype(int)
+    lot_sqft = np.clip(rng.lognormal(np.log(9000), 0.9, n), 2000, 250000).round(-2).astype(int)
     year_built = rng.integers(1925, 2024, n)
     age = 2024 - year_built
 
     # "Quality" = things we can't see in the data (condition, view, finishes).
     # It changes the price but no column records it.
-    quality = rng.normal(0.0, 0.08, n)
+    quality = rng.normal(0.0, 0.12, n)
+    # Rare trophy properties (ocean-front, big estates) sit far above the pack.
+    # This is what gives the price list its heavy upper tail.
+    trophy = np.where(rng.random(n) < 0.02, np.clip(rng.normal(1.3, 0.5, n), 0.3, 2.4), 0.0)
 
     # Log price = sum of effects. (Log means each effect is a % change, which
     # matches how we describe agent skill, in %.)
     log_value = (
-        13.45
+        14.2
         + np.array([zip_effect[z] for z in zip_code])
-        + 0.75 * np.log(sqft / 1800)
+        + 0.75 * np.log(sqft / 2400)
         + 0.03 * (beds - 3)
         + 0.06 * (baths - 2)
-        + 0.10 * np.log(lot_sqft / 6500)
+        + 0.10 * np.log(lot_sqft / 9000)
         - 0.002 * age
         + quality
+        + trophy
     )
+    # Shifted so the cheapest homes sit near the floor instead of far below it.
+    value = PRICE_FLOOR + np.exp(log_value)
 
     homes = pd.DataFrame(
         {
@@ -105,7 +125,7 @@ def make_homes(rng):
             "sqft": sqft,
             "lot_sqft": lot_sqft,
             "year_built": year_built,
-            "true_value": np.exp(log_value).round(-3),
+            "true_value": value.round(-3),
             "quality": quality.round(4),
         }
     )
