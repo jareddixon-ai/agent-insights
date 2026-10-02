@@ -18,7 +18,7 @@ They connect through agent IDs.
 | sqft | integer | Interior square feet | Same |
 | lot_sqft | integer | Lot size in square feet | Same |
 | year_built | integer | Year the home was built | Same |
-| assessed_value | number | County-style public estimate of the home's value, a few percent off the truth | Yes, counties publish tax assessments. Used to separate home quality from agent skill |
+| assessed_value | number | County-style public estimate of the home's value, a few percent off the truth | Counties publish tax assessments. Lets the model see part of the home's quality, so it is not mistaken for agent skill |
 | list_date | date | Day it went on the market | Market timing: prices move by month |
 | original_list_price | dollars | First asking price | Shows list-price games (pricing low to spark bidding) |
 | final_list_price | dollars | Last asking price before sale | Compared with original to see price cuts |
@@ -40,6 +40,25 @@ They connect through agent IDs.
 | team | text | Team, blank if solo | Grouping |
 | years_licensed | integer | Years since first license | Experience. Helps explain results fairly |
 
+## Table 3: offers (one row per offer, winning and losing)
+
+| Column | Type | Plain meaning | Why we need it |
+|---|---|---|---|
+| offer_id | text | Unique ID for the offer | Counting |
+| listing_id | text | Which listing the offer was on | Links to the sales table |
+| buyer_agent_id | text | Agent who made the offer for the buyer. Can be blank | Offer win rate per buyer agent |
+| offer_price | dollars | Price offered | Shows how far losing offers were from the winner |
+| offer_date | date | Day the offer was made | Ordering |
+| outcome | text | `won` or `lost` | Win rate = wins / offers made |
+
+The winning offer's price equals the sale's `sold_price`.
+
+## Optional: messy exports
+
+Real exports are dirty. `src/make_messy_data.py` writes `sales_messy.csv` with an extra `status` column
+(`sold`, `withdrawn`, `expired`), missing values, typos, prices stored as text, and duplicate rows.
+`src/clean_data.py` fixes these and reports what it changed. Unsold listings are dropped (no outcome).
+
 ## Statistical traps to remember
 
 - **Selection bias**: strong agents often get nicer homes, so raw average prices flatter them. We compare each sale to what the home was worth.
@@ -47,7 +66,9 @@ They connect through agent IDs.
 - **Market timing**: a sale in a hot month is not the agent's doing. We adjust for month.
 - **List price games**: a low list price makes "sold over list" look great. We use estimated home value, not list price, as the yardstick.
 
-## Fake data only: answer key
+## Fake data only: answer keys
 
-`data/fake/true_skills.csv` holds each fake agent's hidden skill (seller premium, buyer savings).
-It exists only in the fake data. Real brokerages have no such file. We use it to check our model.
+These exist only in the fake data. Real brokerages have no such files. We use them to check our model.
+
+- `data/fake/true_skills.csv`: each agent's hidden skill: `seller_premium` (sells for this fraction above what the home is worth), `buyer_savings` (buys this fraction below), `win_skill` (higher means offers win more often).
+- `data/fake/true_home_values.csv`: each home's true value (`true_value`) and hidden quality (`quality`: view, condition) that no column records.
