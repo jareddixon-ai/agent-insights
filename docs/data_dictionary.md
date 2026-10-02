@@ -18,6 +18,7 @@ They connect through agent IDs.
 | sqft | integer | Interior square feet | Same |
 | lot_sqft | integer | Lot size in square feet | Same |
 | year_built | integer | Year the home was built | Same |
+| assessed_value | number | County-style public estimate of the home's value, a few percent off the truth | Yes, counties publish tax assessments. Used to separate home quality from agent skill |
 | list_date | date | Day it went on the market | Market timing: prices move by month |
 | original_list_price | dollars | First asking price | Shows list-price games (pricing low to spark bidding) |
 | final_list_price | dollars | Last asking price before sale | Compared with original to see price cuts |

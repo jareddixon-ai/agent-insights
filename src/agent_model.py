@@ -27,6 +27,9 @@ def build_features(sales):
             "beds": sales["beds"],
             "baths": sales["baths"],
             "log_lot": np.log(sales["lot_sqft"]),
+            # Public value estimate. It partly captures things we can't see
+            # (view, condition), which is what stops hidden quality from leaking into agent scores.
+            "log_assessed": np.log(sales["assessed_value"]),
             "age": sold.dt.year - sales["year_built"],
             "trend_years": (sold - sold.min()).dt.days / 365,
         }

@@ -116,6 +116,12 @@ def make_homes(rng):
     # Shifted so the cheapest homes sit near the floor instead of far below it.
     value = PRICE_FLOOR + np.exp(log_value)
 
+    # County-style assessed value: a public estimate of the home's value, a few percent
+    # off the truth. Real brokerages have something like it. Drawn from its own random
+    # stream so every other column stays identical to before.
+    assess_rng = np.random.default_rng([SEED, 1])
+    assessed = value * np.exp(assess_rng.normal(0.0, 0.045, n))
+
     homes = pd.DataFrame(
         {
             "listing_id": [f"L{i:05d}" for i in range(1, n + 1)],
@@ -125,6 +131,7 @@ def make_homes(rng):
             "sqft": sqft,
             "lot_sqft": lot_sqft,
             "year_built": year_built,
+            "assessed_value": assessed.round(-3),
             "true_value": value.round(-3),
             "quality": quality.round(4),
         }
@@ -191,6 +198,7 @@ def make_sales(rng, homes, agents, skills, activity):
             "sqft": homes["sqft"],
             "lot_sqft": homes["lot_sqft"],
             "year_built": homes["year_built"],
+            "assessed_value": homes["assessed_value"],
             "list_date": list_date.date,
             "original_list_price": original_list.round(-3),
             "final_list_price": final_list.round(-3),
