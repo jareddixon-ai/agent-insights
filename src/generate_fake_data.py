@@ -215,6 +215,54 @@ def make_sales(rng, homes, agents, skills, activity):
     return sales
 
 
+def make_offers(sales, agents, skills, activity):
+    """Every sale had one winning offer (the sold price). Add the offers that LOST.
+    Agents with higher hidden win_skill show up less often among the losers,
+    so their win rate (wins / offers made) is higher. Own random stream: other files unchanged."""
+    rng = np.random.default_rng([SEED, 3])
+    n, n_agents = len(sales), len(agents)
+    ids = agents["agent_id"].to_numpy()
+    sold = pd.to_datetime(sales["sold_date"])
+    listed = pd.to_datetime(sales["list_date"])
+
+    winners = pd.DataFrame(
+        {
+            "listing_id": sales["listing_id"],
+            "buyer_agent_id": sales["buyer_agent_id"],
+            "offer_price": sales["sold_price"],
+            "offer_date": (sold - pd.Timedelta(days=2)).dt.date,
+            "outcome": "won",
+        }
+    )
+
+    # Losing offers: 0 to 6 per listing, about 1.5 on average.
+    n_lose = np.minimum(rng.poisson(1.5, n), 6)
+    row = np.repeat(np.arange(n), n_lose)
+    weight = activity * np.exp(-1.0 * skills["win_skill"].to_numpy())
+    agent_idx = rng.choice(n_agents, size=len(row), p=weight / weight.sum())
+    # A losing bidder can't be the listing agent.
+    clash = ids[agent_idx] == sales["listing_agent_id"].to_numpy()[row]
+    agent_idx = np.where(clash, (agent_idx + 1) % n_agents, agent_idx)
+    no_agent = rng.random(len(row)) < NO_BUYER_AGENT_SHARE
+    price = sales["sold_price"].to_numpy()[row] * (1 - (0.005 + rng.gamma(1.5, 0.012, len(row))))
+    span = (sold - listed).dt.days.to_numpy()[row]
+    offset = np.floor(rng.random(len(row)) * np.maximum(span - 1, 1)).astype(int)
+    losers = pd.DataFrame(
+        {
+            "listing_id": sales["listing_id"].to_numpy()[row],
+            "buyer_agent_id": np.where(no_agent, "", ids[agent_idx]),
+            "offer_price": price.round(-3),
+            "offer_date": (listed.to_numpy()[row] + pd.to_timedelta(offset, unit="D")).date,
+            "outcome": "lost",
+        }
+    )
+
+    offers = pd.concat([winners, losers], ignore_index=True)
+    offers = offers.sort_values(["listing_id", "offer_date"], kind="stable").reset_index(drop=True)
+    offers.insert(0, "offer_id", [f"O{i:05d}" for i in range(1, len(offers) + 1)])
+    return offers
+
+
 def run_checks(sales, homes, skills):
     """Quick sanity checks. Stops the script if something is clearly wrong."""
     assert len(sales) == N_SALES
@@ -253,16 +301,19 @@ def main():
 
     agents, skills, activity = make_agents(rng)
     homes = make_homes(rng)
+    skills["win_skill"] = np.random.default_rng([SEED, 2]).normal(0.0, 0.5, len(skills)).round(3)
     sales = make_sales(rng, homes, agents, skills, activity)
+    offers = make_offers(sales, agents, skills, activity)
     run_checks(sales, homes, skills)
 
     # Public files: what a brokerage would really have.
     agents.to_csv(OUT_DIR / "agents.csv", index=False)
     sales.to_csv(OUT_DIR / "sales.csv", index=False)
+    offers.to_csv(OUT_DIR / "offers.csv", index=False)
     # Answer keys: only exist in fake data. Used to grade the model later.
     skills.to_csv(OUT_DIR / "true_skills.csv", index=False)
     homes[["listing_id", "true_value", "quality"]].to_csv(OUT_DIR / "true_home_values.csv", index=False)
-    print("\nSaved 4 files in", OUT_DIR)
+    print("\nSaved 5 files in", OUT_DIR)
 
 
 if __name__ == "__main__":
