@@ -66,14 +66,15 @@ def fit_agent_effects(sales):
     out = out.join(pd.DataFrame({"buyer_effect": buyer - buyer.mean()}), how="outer")
     out["listings"] = sales["listing_agent_id"].value_counts()
     out["buyer_deals"] = sales["buyer_agent_id"].value_counts()
-    return out, model.score(X, y)
+    resid_sd = float(np.std(y - model.predict(X)))  # typical leftover error per sale (log scale)
+    return out, model.score(X, y), resid_sd
 
 
 def main():
     sales = pd.read_csv(DATA / "sales.csv", keep_default_na=False)
     skills = pd.read_csv(DATA / "true_skills.csv").set_index("agent_id")
 
-    effects, r2 = fit_agent_effects(sales)
+    effects, r2, _ = fit_agent_effects(sales)
     effects = effects.join(skills)
     # In the fake data a better buyer agent LOWERS price, so flip the sign to compare.
     effects["true_buyer_effect"] = -effects["buyer_savings"]
