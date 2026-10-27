@@ -82,3 +82,9 @@ All scores are fractions: 0.012 means 1.2%. Every score has a 95% range (`_low`,
 - `bootstrap_scores.csv` (3-3): seller and buyer scores with formula ranges (2C), bootstrap ranges (1,000 resamples), `under_5_deals` flag, and `fixed_k_score` (k = 10) for comparison.
 - `rankings.csv` (3-4): the coaching table. Per agent: seller score, buyer savings, offer win rate (versus the brokerage average), each with a range and a group (clearly above, not clearly different, clearly below), the blended `coaching_index` with its range and `index_group`, `low_data_flag`, and speed and pricing as context. Weights and range choice live in `config/scoring.json`.
 - `stress_test.csv` (3-0): how naive ranking and the model hold up when selection bias is flipped.
+- `validation_summary.csv` (4-0, fake data only): per side, rank agreement and correlation with true skill (shrunk and raw), average miss in percentage points, share of 95% ranges that caught the truth for each range type, and how strongly the miss follows hidden home value.
+- `validation_by_deals.csv` (4-1): the same miss and range checks split by number of deals (1-4, 5-9, 10-19, 20-49, 50+), with shrinkage on and off.
+- `coverage_across_worlds.csv` (4-1): range coverage by number of deals across 5 fake worlds, with and without selection bias.
+- `time_split_check.csv` (4-1): scores from the first vs second half of the sales by date. `reliability` and `implied_accuracy` need no answer key; `actual_accuracy` uses it to show when the no-answer-key check can be fooled.
+
+Charts from `src/validate.py` are committed in `docs/`: `validation.png`, `accuracy_by_deals.png`, `stress_test.png`, `hidden_quality.png`.

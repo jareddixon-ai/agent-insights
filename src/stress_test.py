@@ -71,7 +71,7 @@ def main():
     print("STRESS TEST (average of", len(SEEDS), "fake worlds). Rank agreement with true skill, 1 = perfect.")
     print("'range caught' = share of 95% ranges that contain the true skill (should be about 0.95).\n")
     print(out.round(2).to_string())
-    out.round(3).to_csv(DATA / "stress_test.csv", index_label="scenario")
+    out.round(4).to_csv(DATA / "stress_test.csv", index_label="scenario")
     print("\nSaved stress_test.csv")
 
 

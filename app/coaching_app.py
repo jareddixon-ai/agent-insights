@@ -1,80 +1,95 @@
 """Coaching view for agent-insights. Run with:  streamlit run app/coaching_app.py
-Shows each agent's scores with an honest range. Fake data only."""
+Reads data/fake/rankings.csv (built by src/score_agents.py). Fake data only.
 
+A private copy can point at its own folder by setting AGENT_INSIGHTS_DATA (for example data/private).
+"""
+
+import os
 from pathlib import Path
 
 import altair as alt
 import pandas as pd
 import streamlit as st
 
-DATA = Path(__file__).resolve().parent.parent / "data" / "fake"
-NEEDED = ["seller_scores.csv", "buyer_scores.csv", "offer_win_rates.csv"]
+ROOT = Path(__file__).resolve().parent.parent
+DATA = Path(os.environ.get("AGENT_INSIGHTS_DATA", ROOT / "data" / "fake"))
+GROUPS = ["Clearly above average", "Not clearly different from average", "Clearly below average"]
+GROUP_COLORS = ["#2a78d6", "#898781", "#eb6834"]   # color follows the group, never the rank
+PARTS = {  # name in rankings.csv -> (label, one-sentence meaning, how to show the number)
+    "seller": ("Seller side", "Sells homes for this much above or below what the home predicts.", "pct"),
+    "buyer": ("Buyer side", "Buys homes for clients this much below or above what the home predicts.", "pct"),
+    "offer_win": ("Offers that win", "Share of offers won, versus the brokerage average (percentage points).", "pts"),
+}
 
 
 @st.cache_data
-def load():
-    seller = pd.read_csv(DATA / "seller_scores.csv", index_col="agent_id")
-    buyer = pd.read_csv(DATA / "buyer_scores.csv", index_col="agent_id")
-    wins = pd.read_csv(DATA / "offer_win_rates.csv", index_col="agent_id")
-    # Buyer score is a price effect (lower price = better), so flip it into "savings".
-    buyer = buyer.assign(score=-buyer["score"], low=-buyer["high"], high=-buyer["low"])
-    return seller, buyer, wins
+def load(path):
+    return pd.read_csv(Path(path) / "rankings.csv", index_col="agent_id")
 
 
-def verdict(row):
-    if row["low"] > 0:
-        return "Clearly above average"
-    if row["high"] < 0:
-        return "Clearly below average"
-    return "Not clearly different from average"
-
-
-def pct(x):
-    return f"{x * 100:+.1f}%"
+def fmt(x, kind):
+    if pd.isna(x):
+        return "n/a"
+    return f"{x * 100:+.1f}%" if kind == "pct" else f"{x * 100:+.0f} pts"
 
 
 st.set_page_config(page_title="agent-insights", layout="wide")
 st.title("Agent coaching view")
-st.caption("FAKE DATA. Scores are percent differences versus the average agent, after adjusting for the "
-           "home, zip, and month. A range that includes 0 means we cannot tell this agent from average yet.")
+st.caption("FAKE DATA. Every score compares the agent with the average agent at this brokerage, after "
+           "adjusting for the home, zip and month. Each score has a 95% range: if the range includes 0, "
+           "we can't tell this agent from average yet. That is an honest, common answer.")
 
-if not all((DATA / f).exists() for f in NEEDED):
-    st.error("Scores not found. Run the pipeline first: see the README, 'Run it' section.")
+if not (DATA / "rankings.csv").exists():
+    st.error("rankings.csv not found. Run the pipeline first (README, 'Run it'), ending with score_agents.py.")
     st.stop()
 
-seller, buyer, wins = load()
-seller["verdict"] = seller.apply(verdict, axis=1)
+table = load(str(DATA))
+agent = st.sidebar.selectbox("Agent", sorted(table.index))
+min_deals = st.sidebar.slider("In the team chart, hide agents with fewer deals than", 0, 40, 0)
 
-agent = st.sidebar.selectbox("Agent", sorted(seller.index))
-min_deals = st.sidebar.slider("Hide agents with fewer listings than", 0, 30, 0)
+# ---- One agent ----
+row = table.loc[agent]
+st.subheader(f"Agent {agent}  ·  {row['office']}")
+st.metric("Coaching index", f"{row['coaching_index']:+.2f}",
+          f"range {row['index_low']:+.2f} to {row['index_high']:+.2f}", delta_color="off")
+st.write(f"**{row['index_group']}.** The index blends the three scores below. +1 means about one "
+         "typical step better than the average agent.")
+if row["low_data_flag"]:
+    st.warning("Fewer than 5 deals on record. Treat every number here as a first look, not a verdict.")
 
-st.subheader(f"Agent {agent}")
-c1, c2, c3 = st.columns(3)
-s = seller.loc[agent]
-c1.metric("Seller side: sold vs expected", pct(s["score"]), f"range {pct(s['low'])} to {pct(s['high'])}", delta_color="off")
-c1.write(f"{s['verdict']} ({int(s['deals'])} listings)")
-if agent in buyer.index:
-    b = buyer.loc[agent]
-    c2.metric("Buyer side: savings vs expected", pct(b["score"]), f"range {pct(b['low'])} to {pct(b['high'])}", delta_color="off")
-    c2.write(f"{verdict(b)} ({int(b['deals'])} purchases)")
-else:
-    c2.write("No buyer-side deals for this agent.")
-if agent in wins.index:
-    w = wins.loc[agent]
-    c3.metric("Offers that win", f"{w['win_rate']:.0%}", f"range {w['low']:.0%} to {w['high']:.0%}", delta_color="off")
-    c3.write(f"{int(w['wins'])} of {int(w['offers'])} offers won (raw {w['raw_rate']:.0%})")
-else:
-    c3.write("No offers on record.")
+cols = st.columns(3)
+for col, (part, (label, meaning, kind)) in zip(cols, PARTS.items()):
+    n = int(row[f"{part}_n"])
+    if pd.isna(row[f"{part}_score"]):
+        col.write(f"**{label}:** no deals on record.")
+        continue
+    col.metric(label, fmt(row[f"{part}_score"], kind),
+               f"range {fmt(row[f'{part}_low'], kind)} to {fmt(row[f'{part}_high'], kind)}", delta_color="off")
+    col.caption(f"{meaning} {row[f'{part}_group']} ({n} {'offers' if part == 'offer_win' else 'deals'}).")
 
+with st.expander("Context, not scored: speed and pricing style"):
+    st.write(f"Days on market vs similar homes: {fmt(row['speed_vs_similar'], 'pct')}. "
+             f"Typical first list price vs model value: {fmt(row['list_vs_value'], 'pct')}. "
+             f"Share of listings with a price cut: {row['share_with_price_cut']:.0%}." if pd.notna(
+                 row["speed_vs_similar"]) else "No listings on record.")
+    st.caption("The agent chooses the list price, so these describe style, not skill. "
+               "Listing high goes with slower sales, but listing close to value does not predict better results.")
+
+# ---- Whole team ----
 st.subheader("Everyone, with ranges")
-view = seller[seller["deals"] >= min_deals].reset_index()
-view["order"] = view["score"].rank(method="first")
-base = alt.Chart(view).encode(y=alt.Y("agent_id:N", sort="-x", axis=None))
+view = table.assign(deals=table["seller_n"] + table["buyer_n"]).reset_index()
+view = view[view["deals"] >= min_deals]
+base = alt.Chart(view).encode(
+    y=alt.Y("agent_id:N", sort="-x", axis=None),
+    color=alt.Color("index_group:N", title=None, scale=alt.Scale(domain=GROUPS, range=GROUP_COLORS),
+                    legend=alt.Legend(orient="top")))
 chart = (
-    base.mark_rule().encode(x="low:Q", x2="high:Q", color="verdict:N")
-    + base.mark_point(filled=True).encode(x=alt.X("score:Q", title="Seller score (fraction, 0.01 = 1%)"),
-                                          color="verdict:N", tooltip=["agent_id", "deals", "score", "low", "high"])
-).properties(height=max(300, 7 * len(view)))
+    base.mark_rule(strokeWidth=2, opacity=0.5).encode(x="index_low:Q", x2="index_high:Q")
+    + base.mark_point(filled=True, size=40).encode(
+        x=alt.X("coaching_index:Q", title="Coaching index (0 = average agent)"),
+        tooltip=["agent_id", "office", "deals", alt.Tooltip("coaching_index:Q", format="+.2f"),
+                 alt.Tooltip("index_low:Q", format="+.2f"), alt.Tooltip("index_high:Q", format="+.2f")])
+).properties(height=max(300, 6 * len(view)))
 st.altair_chart(chart, width="stretch")
-counts = view["verdict"].value_counts()
-st.write(", ".join(f"{v}: {n}" for v, n in counts.items()))
+counts = view["index_group"].value_counts()
+st.write(" · ".join(f"{g}: {counts.get(g, 0)}" for g in GROUPS))
