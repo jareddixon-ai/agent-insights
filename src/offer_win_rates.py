@@ -47,7 +47,7 @@ def main():
     print("Agents with under 15 offers:", int(small.sum()), "| their raw rates range",
           f"{t.loc[small,'raw_rate'].min():.0%} to {t.loc[small,'raw_rate'].max():.0%}",
           "| shrunk range", f"{t.loc[small,'win_rate'].min():.0%} to {t.loc[small,'win_rate'].max():.0%}")
-    t.round(4).to_csv(DATA / "offer_win_rates.csv", index_label="agent_id")
+    t.drop(columns="win_skill").round(4).to_csv(DATA / "offer_win_rates.csv", index_label="agent_id")  # no answer key in outputs
 
 
 if __name__ == "__main__":

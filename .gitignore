@@ -217,3 +217,7 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 data/private/
+
+# Generated fake data (rebuild with src/generate_fake_data.py) and Mac folder files
+data/fake/
+.DS_Store

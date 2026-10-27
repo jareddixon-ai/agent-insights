@@ -1,0 +1,11 @@
+{
+  "_about": "Settings for src/score_agents.py. Weights say how much each part counts in the coaching index; they are rescaled to add to 1 for agents missing a part.",
+  "weights": {
+    "seller": 0.5,
+    "buyer": 0.3,
+    "offer_win": 0.2
+  },
+  "_range_options": "Which 95% range decides 'clearly above/below average': formula (2C), bootstrap (3-3), or wider (whichever is wider, so we never overclaim).",
+  "range": "wider",
+  "small_sample": 5
+}

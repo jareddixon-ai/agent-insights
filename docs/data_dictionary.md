@@ -72,3 +72,13 @@ These exist only in the fake data. Real brokerages have no such files. We use th
 
 - `data/fake/true_skills.csv`: each agent's hidden skill: `seller_premium` (sells for this fraction above what the home is worth), `buyer_savings` (buys this fraction below), `win_skill` (higher means offers win more often).
 - `data/fake/true_home_values.csv`: each home's true value (`true_value`) and hidden quality (`quality`: view, condition) that no column records.
+
+## Model outputs (written to data/fake/, not committed)
+
+All scores are fractions: 0.012 means 1.2%. Every score has a 95% range (`_low`, `_high`).
+
+- `predictions.csv` (3-1): one row per sale. `predicted_price` = what the home-only model expected at the sold date, `predicted_at_list` = at the list date. Both are cross-validated (the model never saw that home's price). `pct_error` = sold / predicted - 1.
+- `speed_pricing.csv` (3-2): one row per listing agent. `speed_vs_similar` (-0.10 = sells 10% faster than similar homes), `list_vs_value` (+0.03 = first list price usually 3% above model value), `typical_list_miss`, `share_with_price_cut`. Descriptive only.
+- `bootstrap_scores.csv` (3-3): seller and buyer scores with formula ranges (2C), bootstrap ranges (1,000 resamples), `under_5_deals` flag, and `fixed_k_score` (k = 10) for comparison.
+- `rankings.csv` (3-4): the coaching table. Per agent: seller score, buyer savings, offer win rate (versus the brokerage average), each with a range and a group (clearly above, not clearly different, clearly below), the blended `coaching_index` with its range and `index_group`, `low_data_flag`, and speed and pricing as context. Weights and range choice live in `config/scoring.json`.
+- `stress_test.csv` (3-0): how naive ranking and the model hold up when selection bias is flipped.

@@ -17,10 +17,13 @@ from sklearn.linear_model import LinearRegression
 DATA = Path(__file__).resolve().parent.parent / "data" / "fake"
 
 
-def build_features(sales):
+def build_features(sales, date_col="sold_date", start=None):
     """Home and market columns only. No agents yet, and no list price
-    (list prices are set by the agent, so they would leak agent behavior)."""
-    sold = pd.to_datetime(sales["sold_date"])
+    (list prices are set by the agent, so they would leak agent behavior).
+    date_col / start let the price model ask "what was it worth on the LIST date?"
+    with the trend measured from the same starting day."""
+    sold = pd.to_datetime(sales[date_col])
+    start = pd.to_datetime(sales["sold_date"]).min() if start is None else start
     X = pd.DataFrame(
         {
             "log_sqft": np.log(sales["sqft"]),
@@ -31,7 +34,7 @@ def build_features(sales):
             # (view, condition), which is what stops hidden quality from leaking into agent scores.
             "log_assessed": np.log(sales["assessed_value"]),
             "age": sold.dt.year - sales["year_built"],
-            "trend_years": (sold - sold.min()).dt.days / 365,
+            "trend_years": (sold - start).dt.days / 365,
         }
     )
     X = X.join(pd.get_dummies(sales["zip"], prefix="zip", dtype=float))
@@ -103,7 +106,9 @@ def main():
     big = s["listings"] >= 20
     print("Average error (percentage points): agents with 20+ listings =",
           round(100 * s.loc[big, "error"].mean(), 2), "| under 20 =", round(100 * s.loc[~big, "error"].mean(), 2))
-    effects.to_csv(DATA / "model_effects.csv")
+    # Save model outputs only. Answer-key columns stay out of output files, so nothing
+    # downstream can accidentally use them (a real brokerage would never have them).
+    effects[["seller_effect", "buyer_effect", "listings", "buyer_deals"]].to_csv(DATA / "model_effects.csv")
     print("Saved model_effects.csv")
 
 

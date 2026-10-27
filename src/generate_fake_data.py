@@ -18,8 +18,9 @@ NO_BUYER_AGENT_SHARE = 0.08  # share of sales where the buyer had no agent
 STREETS = ["Oak", "Maple", "Cedar", "Pine", "Elm", "Birch", "Willow", "Aspen"]
 
 
-def make_agents(rng):
-    """Build the agents table and the hidden-skills table."""
+def make_agents(rng, buyer_spread=0.010):
+    """Build the agents table and the hidden-skills table.
+    buyer_spread: how much buyer agents really differ (stress tests can change it)."""
     agent_ids = [f"A{i:03d}" for i in range(1, N_AGENTS + 1)]
 
     # Each agent gets one office (roughly equal sizes).
@@ -44,7 +45,7 @@ def make_agents(rng):
     # Hidden skills: the "answer key". Independent of each other.
     # Bell-curve shaped (most agents near average), cut off at the allowed limits.
     seller_premium = np.clip(rng.normal(0.005, 0.012, N_AGENTS), -0.03, 0.04)
-    buyer_savings = np.clip(rng.normal(0.005, 0.010, N_AGENTS), -0.02, 0.03)
+    buyer_savings = np.clip(rng.normal(0.005, buyer_spread, N_AGENTS), -0.02, 0.03)
     skills = pd.DataFrame(
         {
             "agent_id": agent_ids,
@@ -76,7 +77,7 @@ ZIPS = list(ZIP_EFFECTS)
 PRICE_FLOOR = 2_000_000  # nothing sells far below this in the target market
 
 
-def make_homes(rng):
+def make_homes(rng, seed=SEED):
     """Build 5,000 fake homes and their true market value (what each home is worth
     before any agent skill). The true value is the answer key for later steps."""
     n = N_SALES
@@ -119,7 +120,7 @@ def make_homes(rng):
     # County-style assessed value: a public estimate of the home's value, a few percent
     # off the truth. Real brokerages have something like it. Drawn from its own random
     # stream so every other column stays identical to before.
-    assess_rng = np.random.default_rng([SEED, 1])
+    assess_rng = np.random.default_rng([seed, 1])
     assessed = value * np.exp(assess_rng.normal(0.0, 0.045, n))
 
     homes = pd.DataFrame(
@@ -150,15 +151,16 @@ def pick_agents(rng, activity, skill, home_z, strength):
     return np.minimum((u > cdf).sum(axis=1), len(skill) - 1)  # index of chosen agent
 
 
-def make_sales(rng, homes, agents, skills, activity):
-    """Turn homes into sales: pick agents, add dates, prices, list-price games."""
+def make_sales(rng, homes, agents, skills, activity, selection_strength=SELECTION_STRENGTH):
+    """Turn homes into sales: pick agents, add dates, prices, list-price games.
+    selection_strength > 0: better agents get pricier homes. < 0: cheaper homes. 0: random."""
     n = len(homes)
     home_z = ((np.log(homes["true_value"]) - np.log(homes["true_value"]).mean())
               / np.log(homes["true_value"]).std()).to_numpy()
 
     # Who sold it, and who bought it.
-    li = pick_agents(rng, activity, skills["seller_premium"].to_numpy(), home_z, SELECTION_STRENGTH)
-    bi = pick_agents(rng, activity, skills["buyer_savings"].to_numpy(), home_z, SELECTION_STRENGTH)
+    li = pick_agents(rng, activity, skills["seller_premium"].to_numpy(), home_z, selection_strength)
+    bi = pick_agents(rng, activity, skills["buyer_savings"].to_numpy(), home_z, selection_strength)
     bi = np.where(bi == li, (bi + 1) % len(agents), bi)  # an agent can't be on both sides
     has_buyer_agent = rng.random(n) >= NO_BUYER_AGENT_SHARE
 
@@ -215,11 +217,11 @@ def make_sales(rng, homes, agents, skills, activity):
     return sales
 
 
-def make_offers(sales, agents, skills, activity):
+def make_offers(sales, agents, skills, activity, seed=SEED):
     """Every sale had one winning offer (the sold price). Add the offers that LOST.
     Agents with higher hidden win_skill show up less often among the losers,
     so their win rate (wins / offers made) is higher. Own random stream: other files unchanged."""
-    rng = np.random.default_rng([SEED, 3])
+    rng = np.random.default_rng([seed, 3])
     n, n_agents = len(sales), len(agents)
     ids = agents["agent_id"].to_numpy()
     sold = pd.to_datetime(sales["sold_date"])
@@ -295,24 +297,31 @@ def run_checks(sales, homes, skills):
     print("Sold price range:", int(sales["sold_price"].min()), "to", int(sales["sold_price"].max()))
 
 
-def main():
-    rng = np.random.default_rng(SEED)  # the random number generator
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+def generate(seed=SEED, selection_strength=SELECTION_STRENGTH, buyer_spread=0.010, quiet=False):
+    """Build every table in memory. The defaults give the standard fake data.
+    Stress tests call this with other settings (for example selection_strength=-0.4)."""
+    rng = np.random.default_rng(seed)  # the random number generator
+    agents, skills, activity = make_agents(rng, buyer_spread)
+    homes = make_homes(rng, seed)
+    skills["win_skill"] = np.random.default_rng([seed, 2]).normal(0.0, 0.5, len(skills)).round(3)
+    sales = make_sales(rng, homes, agents, skills, activity, selection_strength)
+    offers = make_offers(sales, agents, skills, activity, seed)
+    if not quiet:
+        run_checks(sales, homes, skills)
+    return {"agents": agents, "sales": sales, "offers": offers, "skills": skills, "homes": homes}
 
-    agents, skills, activity = make_agents(rng)
-    homes = make_homes(rng)
-    skills["win_skill"] = np.random.default_rng([SEED, 2]).normal(0.0, 0.5, len(skills)).round(3)
-    sales = make_sales(rng, homes, agents, skills, activity)
-    offers = make_offers(sales, agents, skills, activity)
-    run_checks(sales, homes, skills)
+
+def main():
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    t = generate()
 
     # Public files: what a brokerage would really have.
-    agents.to_csv(OUT_DIR / "agents.csv", index=False)
-    sales.to_csv(OUT_DIR / "sales.csv", index=False)
-    offers.to_csv(OUT_DIR / "offers.csv", index=False)
+    t["agents"].to_csv(OUT_DIR / "agents.csv", index=False)
+    t["sales"].to_csv(OUT_DIR / "sales.csv", index=False)
+    t["offers"].to_csv(OUT_DIR / "offers.csv", index=False)
     # Answer keys: only exist in fake data. Used to grade the model later.
-    skills.to_csv(OUT_DIR / "true_skills.csv", index=False)
-    homes[["listing_id", "true_value", "quality"]].to_csv(OUT_DIR / "true_home_values.csv", index=False)
+    t["skills"].to_csv(OUT_DIR / "true_skills.csv", index=False)
+    t["homes"][["listing_id", "true_value", "quality"]].to_csv(OUT_DIR / "true_home_values.csv", index=False)
     print("\nSaved 5 files in", OUT_DIR)
 
 
