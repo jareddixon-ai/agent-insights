@@ -47,7 +47,7 @@ def make_messy(sales, rng):
 def main():
     sales = pd.read_csv(DATA / "sales.csv", keep_default_na=False, dtype=str).replace("", np.nan)
     sales = sales.astype({c: float for c in ["beds", "baths", "sqft", "lot_sqft", "year_built",
-                                              "assessed_value", "sold_price"]})
+                                              "assessed_value", "prior_sale_price", "sold_price"]})
     messy = make_messy(sales, np.random.default_rng(SEED))
     messy.to_csv(DATA / "sales_messy.csv", index=False)
     print("Messy rows:", len(messy), "(clean had", len(sales), ")")

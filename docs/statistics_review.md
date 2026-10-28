@@ -4,6 +4,16 @@ Prompt used: "Act as a skeptical statistician reviewing agent-insights. Find the
 
 This review was written by Claude after building the validation in `src/validate.py`. Getting an outside statistician to read it before a pilot is still worth doing: the people who built a model are the worst at spotting its blind spots.
 
+## Update after Phase 4.5
+
+- **Issue 1 (California tax values): fixed in the fake data and the model.** Assessed values now follow Prop 13, and the model uses the last sale date and price. Without them, estate specialists looked 3.0 points better than they are; with them, 0.0. The cost is real, though: buyer rank agreement fell from 0.55 to 0.17, because county records show so little about condition. See `src/sale_history_test.py` and `docs/sale_history.png`.
+- **Issue 2 (ranges ignore bias): allowance added**, 0.008 in `config/scoring.json` (about 0.8 points of bias, one standard deviation). Busy agents are now caught 93% (seller) and 97% (buyer) of the time. Correction to the fix below: the first half vs second half check can NOT size this allowance. A bias that repeats in both halves is invisible to it (it guessed buyer accuracy at 0.52 when the truth was 0.00). On real data the allowance is an assumption, so it lives in the config where anyone can see it.
+- **Issue 3 (offer win rate): weight set to 0.** Shown as context only until Phase 5 makes fake offers depend on price.
+- **New issue found and fixed: the spread between agents could collapse to zero.** The old estimate (spread of raw scores minus average noise) was dominated by agents with 1 or 2 deals. In 2 of 5 fake worlds it said buyer agents don't differ at all, which pulled every buyer score to exactly 0 with almost no range (17% to 19% of ranges caught the truth). Shrinkage now uses the meta-analysis estimate (DerSimonian and Laird), where busy agents count more. This also explains the Phase 4 puzzle about narrow buyer ranges.
+- **New decision: buyer scores are context only.** With California records they match true skill at 0.17, and their few clear calls were right only about half the time.
+
+The original review follows, unchanged except where marked.
+
 ## What already holds up
 
 - The model compares each sale with what the home itself predicts (size, lot, zip, month, trend, assessed value), so an agent isn't credited for working in a pricey zip or a hot month.
@@ -25,7 +35,7 @@ This review was written by Claude after building the validation in `src/validate
 
 **Why it's unfair.** Busy agents are the ones leaders know and talk about. They are the most likely to be told "clearly below average" when the truth is "about average".
 
-**Simplest fix.** Add a bias allowance to `config/scoring.json`: widen every range by about plus or minus 0.5 points (combined with the luck range, not added on top). In the fake data that brings busy agents back to about 95% and cuts clear calls from 14% of agents to 9%. On real data, size it with the first half vs second half check in `validate.py` and report it next to the scores.
+**Simplest fix.** Add a bias allowance to `config/scoring.json`: widen every range to allow for about 0.5 points of bias (combined with the luck range, not added on top). In the fake data that brings busy agents back to about 95% and cuts clear calls from 14% of agents to 9%. ~~On real data, size it with the first half vs second half check in `validate.py`.~~ (Wrong: see the update above.)
 
 ## 3. Offer win rate can reward the client's wallet, not the agent
 

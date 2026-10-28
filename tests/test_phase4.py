@@ -28,8 +28,10 @@ def test_charts_are_written(validation):
 def test_model_finds_skill_and_buyer_side_is_weaker(validation):
     stats = validation[1]
     assert stats["seller"]["rank_agreement_shrunk"] > 0.6
-    assert 0.2 < stats["buyer"]["rank_agreement_shrunk"] < stats["seller"]["rank_agreement_shrunk"]
-    assert stats["seller"]["coverage_wider"] > 0.85
+    # Phase 4.5: with California tax values the buyer side is far weaker (about 0.05 to 0.3).
+    assert stats["buyer"]["rank_agreement_shrunk"] < stats["seller"]["rank_agreement_shrunk"] - 0.3
+    assert stats["seller"]["coverage_used"] > 0.9
+    assert stats["seller"]["clear_calls_right"] >= 0.9
 
 
 def test_shrinkage_helps_thin_records(validation):

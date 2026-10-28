@@ -15,17 +15,33 @@ import pandas as pd
 from agent_model import DATA, fit_agent_effects
 
 
+def spread_between_agents(effect, noise_var):
+    """How much agents REALLY differ (tau squared), once luck is taken out.
+
+    Same method meta-analysis uses to combine studies (DerSimonian and Laird, 1986): busy
+    agents' scores are less noisy, so they count more when we measure the spread. Phase 2-4
+    used a plain version (spread of all raw scores minus the average noise). Agents with 1 or
+    2 deals dominated it, and in 2 of 5 fake worlds it said buyer agents don't differ at all
+    (spread 0), which pulled every buyer score to exactly 0 with almost no range.
+    """
+    w = 1 / noise_var
+    middle = (w * effect).sum() / w.sum()
+    q = (w * (effect - middle) ** 2).sum()           # how far scores sit from the middle, in noise units
+    excess = q - (len(effect) - 1)                    # what luck alone would give is about len - 1
+    return max(excess / (w.sum() - (w**2).sum() / w.sum()), 1e-6)
+
+
 def shrink(effect, n_deals, resid_sd):
     """Pull raw effects toward 0 (the average agent).
 
-    Noise in one agent's raw score ~ resid_sd / sqrt(deals).  Real spread between
-    agents (tau) = total spread in raw scores minus that noise.
+    Noise in one agent's raw score ~ resid_sd / sqrt(deals). Real spread between
+    agents (tau) comes from spread_between_agents.
     weight near 1 = trust the agent's own record, near 0 = lean on the average.
     """
     effect = effect.dropna()
     n = n_deals.reindex(effect.index).fillna(1).clip(lower=1)
     noise_var = resid_sd**2 / n
-    tau2 = max(effect.var() - noise_var.mean(), 1e-6)
+    tau2 = spread_between_agents(effect, noise_var)
     weight = tau2 / (tau2 + noise_var)
     shrunk = weight * effect
     # 95% range: the agent's most likely value, give or take about 2 standard errors.

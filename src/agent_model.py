@@ -30,13 +30,18 @@ def build_features(sales, date_col="sold_date", start=None):
             "beds": sales["beds"],
             "baths": sales["baths"],
             "log_lot": np.log(sales["lot_sqft"]),
-            # Public value estimate. It partly captures things we can't see
+            # Public value estimate (county assessed value). It partly captures things we can't see
             # (view, condition), which is what stops hidden quality from leaking into agent scores.
             "log_assessed": np.log(sales["assessed_value"]),
             "age": sold.dt.year - sales["year_built"],
             "trend_years": (sold - start).dt.days / 365,
         }
     )
+    # Sale history (California, Prop 13): the assessed value lags further behind the longer
+    # the owner held the home, so the model needs to know how long that was.
+    if "prior_sale_date" in sales:
+        X["years_owned"] = (sold - pd.to_datetime(sales["prior_sale_date"])).dt.days / 365
+        X["log_prior_sale"] = np.log(sales["prior_sale_price"])
     X = X.join(pd.get_dummies(sales["zip"], prefix="zip", dtype=float))
     X = X.join(pd.get_dummies(sold.dt.month, prefix="month", dtype=float))
     return X

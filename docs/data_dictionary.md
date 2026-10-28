@@ -18,7 +18,9 @@ They connect through agent IDs.
 | sqft | integer | Interior square feet | Same |
 | lot_sqft | integer | Lot size in square feet | Same |
 | year_built | integer | Year the home was built | Same |
-| assessed_value | number | County-style public estimate of the home's value, a few percent off the truth | Counties publish tax assessments. Lets the model see part of the home's quality, so it is not mistaken for agent skill |
+| assessed_value | number | County tax value. In California (Prop 13) it is the last sale price, raised at most 2% a year since | Lets the model see part of the home's quality, so it is not mistaken for agent skill. On its own it is a weak guide for long-held homes |
+| prior_sale_date | date | When the home last sold (county records) | Tells the model how far the assessed value has fallen behind the market. Without it, agents who list long-held homes look like stars |
+| prior_sale_price | dollars | What it sold for then | A second read on the home's quality. In California it carries almost the same information as assessed value plus the date |
 | list_date | date | Day it went on the market | Market timing: prices move by month |
 | original_list_price | dollars | First asking price | Shows list-price games (pricing low to spark bidding) |
 | final_list_price | dollars | Last asking price before sale | Compared with original to see price cuts |
@@ -65,6 +67,7 @@ Real exports are dirty. `src/make_messy_data.py` writes `sales_messy.csv` with a
 - **Small samples**: an agent with 3 sales tells us little. Results need caution or shrinking toward the average.
 - **Market timing**: a sale in a hot month is not the agent's doing. We adjust for month.
 - **List price games**: a low list price makes "sold over list" look great. We use estimated home value, not list price, as the yardstick.
+- **California tax values (Prop 13)**: assessed value lags far behind market value for long-held homes. Always pair it with the last sale date.
 
 ## Fake data only: answer keys
 
@@ -72,6 +75,7 @@ These exist only in the fake data. Real brokerages have no such files. We use th
 
 - `data/fake/true_skills.csv`: each agent's hidden skill: `seller_premium` (sells for this fraction above what the home is worth), `buyer_savings` (buys this fraction below), `win_skill` (higher means offers win more often).
 - `data/fake/true_home_values.csv`: each home's true value (`true_value`) and hidden quality (`quality`: view, condition) that no column records.
+- Estate specialists (15% of agents, who mostly list long-held homes) are flagged only inside `generate()`, never in a file. `sale_history_test.py` uses the flag to measure bias against them.
 
 ## Model outputs (written to data/fake/, not committed)
 
@@ -88,3 +92,5 @@ All scores are fractions: 0.012 means 1.2%. Every score has a 95% range (`_low`,
 - `time_split_check.csv` (4-1): scores from the first vs second half of the sales by date. `reliability` and `implied_accuracy` need no answer key; `actual_accuracy` uses it to show when the no-answer-key check can be fooled.
 
 Charts from `src/validate.py` are committed in `docs/`: `validation.png`, `accuracy_by_deals.png`, `stress_test.png`, `hidden_quality.png`.
+- `sale_history_test.csv` (4.5): seller and buyer rank agreement, leftover error, estate-specialist bias and range coverage in 4 settings (Phase 4 data, California without sale history, California with it, true value). Chart: `docs/sale_history.png`.
+- `rankings.csv` (since 4.5): parts with weight 0 in `config/scoring.json` (now buyer and offer_win) have group "Context only". Seller and buyer ranges include the bias allowance.

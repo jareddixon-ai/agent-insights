@@ -1,11 +1,14 @@
 {
-  "_about": "Settings for src/score_agents.py. Weights say how much each part counts in the coaching index; they are rescaled to add to 1 for agents missing a part.",
+  "_about": "Settings for src/score_agents.py. Weights say how much each part counts in the coaching index; they are rescaled to add to 1 for agents missing a part. A part with weight 0 is still shown, but as context only, with no 'clearly above/below' call.",
   "weights": {
-    "seller": 0.5,
-    "buyer": 0.3,
-    "offer_win": 0.2
+    "seller": 1.0,
+    "buyer": 0.0,
+    "offer_win": 0.0
   },
+  "_weights_note": "Phase 4.5: buyer and offer weights set to 0. With California tax values the buyer score matches true skill only weakly (0.16) and its clear calls are right less than half the time; offer win rate can reward clients who bid high. Phase 3 weights were seller 0.5, buyer 0.3, offer_win 0.2. Turn a part back on only after validate.py shows it works on the data you have.",
   "_range_options": "Which 95% range decides 'clearly above/below average': formula (2C), bootstrap (3-3), or wider (whichever is wider, so we never overclaim).",
   "range": "wider",
+  "bias_allowance": 0.008,
+  "_bias_allowance": "Extra room for bias the ranges can't see (hidden home quality). 0.008 means we assume up to about 0.8 percentage points of bias (one standard deviation), so seller and buyer ranges are always at least about 1.6 points either side. Sized on fake data so agents with 50+ deals are caught about 95% of the time. On real data this is an assumption, not a measurement.",
   "small_sample": 5
 }

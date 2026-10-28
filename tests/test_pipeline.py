@@ -53,7 +53,7 @@ def test_offers_winner_is_highest_offer(data_dir):
 def test_cleaning_removes_mess_without_leaking(data_dir):
     sales = read(data_dir, "sales.csv", dtype=str).replace("", np.nan)
     sales = sales.astype({c: float for c in ["beds", "baths", "sqft", "lot_sqft",
-                                              "year_built", "assessed_value", "sold_price"]})
+                                              "year_built", "assessed_value", "prior_sale_price", "sold_price"]})
     messy = make_messy_data.make_messy(sales, np.random.default_rng(1))
     clean, report = clean_data.clean_sales(messy)
     assert clean["listing_id"].is_unique

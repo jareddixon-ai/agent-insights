@@ -6,12 +6,14 @@ Brings together:
   offer win rate: share of the agent's offers that win (2C-style shrinkage)
   speed, pricing: descriptive only (3-2), never part of the index
 
-Coaching index: a weighted blend of the three scores (weights in config/scoring.json).
+Coaching index: a weighted blend of the scores (weights in config/scoring.json).
 Each part is first put on the same scale (divided by how much agents typically differ on
 it), so a 1-point move means "one typical step" on any part. 0 = the average agent.
+Since Phase 4.5 only the seller score has weight; buyer and offer scores are context only.
 
-Every number keeps a 95% range. If the range includes 0, the agent is
-"not clearly different from average", which is an honest and common answer.
+Every number keeps a 95% range. Seller and buyer ranges also get a bias allowance (4.5):
+room for hidden home quality, which no amount of deals averages away. If the range
+includes 0, the agent is "not clearly different from average", an honest and common answer.
 
 Run order: generate_fake_data, price_model, speed_and_pricing, bootstrap_ranges,
 offer_win_rates, then this file.
@@ -33,6 +35,7 @@ def load_config(path=CONFIG):
     cfg = json.loads(Path(path).read_text())
     assert cfg["range"] in {"formula", "bootstrap", "wider"}, "range must be formula, bootstrap or wider"
     assert all(w >= 0 for w in cfg["weights"].values()) and sum(cfg["weights"].values()) > 0
+    assert cfg.get("bias_allowance", 0) >= 0
     return cfg
 
 
@@ -46,6 +49,15 @@ def pick_range(t, choice):
     return np.minimum(t["formula_low"], boot_low), np.maximum(t["formula_high"], boot_high)
 
 
+def table_range(t, cfg):
+    """The range the coaching table uses for one side: the range named in the config,
+    widened by the bias allowance. Combined like two independent errors (square root of
+    the sum of squares), so a wide range grows a little and a narrow one grows a lot."""
+    low, high = pick_range(t, cfg["range"])
+    room = (Z95 * cfg.get("bias_allowance", 0)) ** 2
+    return t["score"] - np.sqrt((t["score"] - low) ** 2 + room), t["score"] + np.sqrt((high - t["score"]) ** 2 + room)
+
+
 def group(low, high):
     return np.where(low > 0, "Clearly above average",
                     np.where(high < 0, "Clearly below average", "Not clearly different from average"))
@@ -54,8 +66,8 @@ def group(low, high):
 def build_table(boot, wins, speed, agents, cfg):
     seller = boot.xs("seller", level="side")
     buyer = boot.xs("buyer", level="side")
-    s_low, s_high = pick_range(seller, cfg["range"])
-    b_low, b_high = pick_range(buyer, cfg["range"])
+    s_low, s_high = table_range(seller, cfg)
+    b_low, b_high = table_range(buyer, cfg)
     p0 = wins["wins"].sum() / wins["offers"].sum()
 
     # Each part as "higher = better for the client", with its range.
@@ -73,7 +85,9 @@ def build_table(boot, wins, speed, agents, cfg):
         p = p.reindex(table.index)
         table[f"{name}_score"], table[f"{name}_low"], table[f"{name}_high"] = p["score"], p["low"], p["high"]
         table[f"{name}_n"] = p["n"].fillna(0).astype(int)
-        table[f"{name}_group"] = np.where(p["score"].isna(), "No data", group(p["low"], p["high"]))
+        scored = cfg["weights"].get(name, 0) > 0
+        table[f"{name}_group"] = np.where(p["score"].isna(), "No data",
+                                          group(p["low"], p["high"]) if scored else "Context only")
         spread = p["score"].std()  # how much agents typically differ on this part
         z, se = p["score"] / spread, (p["high"] - p["low"]) / (2 * Z95) / spread
         w = cfg["weights"].get(name, 0) * p["score"].notna()
@@ -92,12 +106,14 @@ def build_table(boot, wins, speed, agents, cfg):
     # Descriptive context only (not in the index).
     ctx = speed[["speed_vs_similar", "list_vs_value", "share_with_price_cut"]]
     table = table.join(ctx)
-    table = table[table["coaching_index"].notna()]
-    return table.sort_values("coaching_index", ascending=False)
+    # Agents with no scored part (for example no listings) stay in the table with "No data",
+    # so their context scores can still be seen.
+    return table.sort_values("coaching_index", ascending=False, na_position="last")
 
 
 def grade(table, skills, cfg):
     """Fake data only: compare the index with the same blend of TRUE skills."""
+    table = table[table["coaching_index"].notna()]
     sk = skills.reindex(table.index)
     true_parts = {"seller": sk["seller_premium"], "buyer": sk["buyer_savings"], "offer_win": sk["win_skill"]}
     true_index = sum(cfg["weights"][k] * (v - v.mean()) / v.std() for k, v in true_parts.items())
@@ -118,7 +134,8 @@ def main():
     agents = pd.read_csv(DATA / "agents.csv", keep_default_na=False)
     table = build_table(boot, wins, speed, agents, cfg)
 
-    print(f"COACHING TABLE (weights {cfg['weights']}, ranges: {cfg['range']})")
+    print(f"COACHING TABLE (weights {cfg['weights']}, ranges: {cfg['range']}, "
+          f"bias allowance {cfg.get('bias_allowance', 0)})")
     for part in ["seller", "buyer", "offer_win"]:
         counts = table[f"{part}_group"].value_counts()
         print(f"  {part:9s}: " + ", ".join(f"{k} {v}" for k, v in counts.items()))

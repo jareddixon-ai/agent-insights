@@ -1,7 +1,8 @@
 """Step 3-1: home-only price model, checked with cross-validation.
 
 Question it answers: "Ignoring who the agents were, what should this home sell for?"
-Inputs: size, beds, baths, lot, age, assessed value, zip, month and trend. No agents,
+Inputs: size, beds, baths, lot, age, assessed value, last sale (date and price), zip, month
+and trend. No agents,
 no list price (the agent sets list price, so using it would leak agent behavior in).
 
 Cross-validation (5-fold): split the sales into 5 groups. Train on 4, predict the 5th,
@@ -24,7 +25,7 @@ N_FOLDS = 5
 def cross_validated_predictions(sales, drop=()):
     """Out-of-fold predicted price for every sale, at the sold date and at the list date."""
     start = pd.to_datetime(sales["sold_date"]).min()
-    X_sold = build_features(sales, "sold_date", start).drop(columns=list(drop))
+    X_sold = build_features(sales, "sold_date", start).drop(columns=list(drop), errors="ignore")
     X_list = build_features(sales, "list_date", start).reindex(columns=X_sold.columns, fill_value=0.0)
     y = np.log(sales["sold_price"].to_numpy())
 
@@ -53,13 +54,18 @@ def main():
     pred = cross_validated_predictions(sales)
     pred["pct_error"] = (pred["sold_price"] / pred["predicted_price"] - 1).round(4)
     e = error_summary(pred)
-    e_no_assessed = error_summary(cross_validated_predictions(sales, drop=["log_assessed"]))
+    public = ["log_assessed", "years_owned", "log_prior_sale"]   # county records: tax value and last sale
+    e_no_assessed = error_summary(cross_validated_predictions(sales, drop=public))
+    e_no_history = error_summary(cross_validated_predictions(sales, drop=public[1:]))
 
     print(f"HOME-ONLY PRICE MODEL ({N_FOLDS}-fold cross-validation, every home predicted by a model that never saw it)")
     print(f"Median error {e['median_error']:.1%} (goal: under 10%) | within 10%: {e['within_10pct']:.0%}"
           f" | 1 home in 20 is off by more than {e['worst_5pct']:.1%}")
-    print(f"Same model WITHOUT assessed value: median error {e_no_assessed['median_error']:.1%}"
-          " (shows how much the public value estimate carries)")
+    print(f"Same model WITHOUT assessed value or sale history: median error {e_no_assessed['median_error']:.1%}"
+          " (shows how much the county records carry)")
+    if "prior_sale_date" in sales:
+        print(f"Same model with assessed value but NOT the last sale: median error {e_no_history['median_error']:.1%}"
+              " (Prop 13: the tax value alone is a weak guide)")
     assert e["median_error"] < 0.10, "Price model misses the 10% goal"
 
     # The original plan's simpler agent score: average(sold / predicted) - 1 per listing agent.

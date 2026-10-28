@@ -39,8 +39,13 @@ def clean_sales(raw):
     for col in ["sqft", "lot_sqft", "beds", "baths", "year_built"]:
         filled[col] = int(df[col].isna().sum())
         df[col] = df[col].fillna(df.groupby("zip")[col].transform("median"))
-    per_sqft = (df["assessed_value"] / df["sqft"]).groupby(df["zip"]).transform("median")
     filled["assessed_value"] = int(df["assessed_value"].isna().sum())
+    if "prior_sale_price" in df:
+        # California (Prop 13): assessed value = last sale price, grown at most 2% a year.
+        days = (df["list_date"] - pd.to_datetime(df["prior_sale_date"], errors="coerce")).dt.days
+        years = np.floor(days / 365.25)   # whole years of 2% growth
+        df["assessed_value"] = df["assessed_value"].fillna(df["prior_sale_price"] * 1.02 ** years)
+    per_sqft = (df["assessed_value"] / df["sqft"]).groupby(df["zip"]).transform("median")
     df["assessed_value"] = df["assessed_value"].fillna(df["sqft"] * per_sqft)
     report["filled"] = filled
     report["rows_out"] = len(df)

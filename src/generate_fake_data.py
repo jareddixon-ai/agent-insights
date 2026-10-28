@@ -15,6 +15,15 @@ START_DATE = "2023-10-01"  # earliest list date (about 3 years of listings)
 N_LIST_DAYS = 1003  # list dates run to mid-2026
 SELECTION_STRENGTH = 0.4  # how strongly better agents get pricier homes
 NO_BUYER_AGENT_SHARE = 0.08  # share of sales where the buyer had no agent
+# California tax values (Prop 13): a home's assessed value is set to its purchase price
+# and then rises at most 2% a year until it sells again. Prices grow faster than that,
+# so the longer an owner has held a home, the further its assessed value lags behind.
+ASSESSED_STYLE = "prop13"  # "prop13" (California) or "market" (assessed value near market value)
+PROP13_CAP = 0.02  # most an assessed value can rise in a year
+LONG_RUN_GROWTH = 0.055  # how fast prices rose per year before our 3 years of sales
+ESTATE_SHARE = 0.15  # share of agents who mostly list long-held homes (estates, older owners)
+MEAN_YEARS_OWNED = (13, 28)  # average years since the last sale: other agents, estate specialists
+# (gives a median near 11 years, in line with US sellers in NAR's 2025 Profile of Home Buyers and Sellers)
 STREETS = ["Oak", "Maple", "Cedar", "Pine", "Elm", "Birch", "Willow", "Aspen"]
 
 
@@ -217,6 +226,36 @@ def make_sales(rng, homes, agents, skills, activity, selection_strength=SELECTIO
     return sales
 
 
+def add_sale_history(sales, homes, agents, seed=SEED):
+    """California version of the public records: when the home last sold, for how much,
+    and the Prop 13 assessed value that follows from it. Own random stream, so every
+    other column stays identical. Returns the new sales table and the hidden estate flag."""
+    rng = np.random.default_rng([seed, 4])
+    ids = agents["agent_id"].to_numpy()
+    # Some agents specialize in long-held homes. Not a skill, just the kind of client they serve.
+    estate = pd.Series(rng.random(len(ids)) < ESTATE_SHARE, index=ids)
+    is_estate = estate.reindex(sales["listing_agent_id"]).to_numpy()
+    listed = pd.to_datetime(sales["list_date"])
+    age = (listed.dt.year - sales["year_built"]).to_numpy()
+    years = rng.gamma(2.0, np.where(is_estate, MEAN_YEARS_OWNED[1], MEAN_YEARS_OWNED[0]) / 2)
+    years = np.clip(years, 0.5, np.clip(age, 0.5, 49))  # can't have owned it longer than it existed
+    days_owned = (years * 365.25).astype(int)
+    years = days_owned / 365.25  # whole days, so the dates and the 2% rule agree exactly
+
+    # What it sold for back then: today's value, minus the growth since, give or take how
+    # the home's condition changed (grows with time) and that sale's own bidding luck.
+    condition_change = rng.normal(0.0, 0.025 * np.sqrt(years))
+    luck = rng.normal(0.0, 0.03, len(sales))
+    prior_price = homes["true_value"].to_numpy() * np.exp(-LONG_RUN_GROWTH * years - condition_change + luck)
+
+    out = sales.copy()
+    out["assessed_value"] = (prior_price * (1 + PROP13_CAP) ** np.floor(years)).round(-3)
+    pos = out.columns.get_loc("assessed_value") + 1
+    out.insert(pos, "prior_sale_date", (listed - pd.to_timedelta(days_owned, unit="D")).dt.date)
+    out.insert(pos + 1, "prior_sale_price", prior_price.round(-3))
+    return out, estate
+
+
 def make_offers(sales, agents, skills, activity, seed=SEED):
     """Every sale had one winning offer (the sold price). Add the offers that LOST.
     Agents with higher hidden win_skill show up less often among the losers,
@@ -295,20 +334,32 @@ def run_checks(sales, homes, skills):
     print("Correlation, seller skill vs sold/true value (should be strongly > 0):",
           round(by_agent["seller_premium"].corr(by_agent["mean_ratio"]), 2))
     print("Sold price range:", int(sales["sold_price"].min()), "to", int(sales["sold_price"].max()))
+    if "prior_sale_date" in sales:
+        ratio = (sales["assessed_value"] / d["true_value"]).median()
+        owned = (pd.to_datetime(sales["list_date"]) - pd.to_datetime(sales["prior_sale_date"])).dt.days / 365.25
+        print(f"Prop 13: typical assessed value is {ratio:.0%} of true value | median years owned "
+              f"{owned.median():.1f} | owned 20+ years: {(owned >= 20).mean():.0%} of sales")
 
 
-def generate(seed=SEED, selection_strength=SELECTION_STRENGTH, buyer_spread=0.010, quiet=False):
+def generate(seed=SEED, selection_strength=SELECTION_STRENGTH, buyer_spread=0.010,
+             assessed_style=ASSESSED_STYLE, quiet=False):
     """Build every table in memory. The defaults give the standard fake data.
-    Stress tests call this with other settings (for example selection_strength=-0.4)."""
+    Stress tests call this with other settings (for example selection_strength=-0.4).
+    assessed_style="market" gives the Phase 4 world (assessed value near market value)."""
+    assert assessed_style in {"prop13", "market"}
     rng = np.random.default_rng(seed)  # the random number generator
     agents, skills, activity = make_agents(rng, buyer_spread)
     homes = make_homes(rng, seed)
     skills["win_skill"] = np.random.default_rng([seed, 2]).normal(0.0, 0.5, len(skills)).round(3)
     sales = make_sales(rng, homes, agents, skills, activity, selection_strength)
     offers = make_offers(sales, agents, skills, activity, seed)
+    estate = pd.Series(False, index=agents["agent_id"].to_numpy())
+    if assessed_style == "prop13":
+        sales, estate = add_sale_history(sales, homes, agents, seed)
     if not quiet:
         run_checks(sales, homes, skills)
-    return {"agents": agents, "sales": sales, "offers": offers, "skills": skills, "homes": homes}
+    return {"agents": agents, "sales": sales, "offers": offers, "skills": skills, "homes": homes,
+            "estate": estate}
 
 
 def main():

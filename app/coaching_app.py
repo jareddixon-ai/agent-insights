@@ -30,7 +30,8 @@ def load(path):
 def fmt(x, kind):
     if pd.isna(x):
         return "n/a"
-    return f"{x * 100:+.1f}%" if kind == "pct" else f"{x * 100:+.0f} pts"
+    x = round(x * 100, 1 if kind == "pct" else 0) + 0.0   # + 0.0 turns -0.0 into 0.0
+    return f"{x:+.1f}%" if kind == "pct" else f"{x:+.0f} pts"
 
 
 st.set_page_config(page_title="agent-insights", layout="wide")
@@ -50,10 +51,14 @@ min_deals = st.sidebar.slider("In the team chart, hide agents with fewer deals t
 # ---- One agent ----
 row = table.loc[agent]
 st.subheader(f"Agent {agent}  ·  {row['office']}")
-st.metric("Coaching index", f"{row['coaching_index']:+.2f}",
-          f"range {row['index_low']:+.2f} to {row['index_high']:+.2f}", delta_color="off")
-st.write(f"**{row['index_group']}.** The index blends the three scores below. +1 means about one "
-         "typical step better than the average agent.")
+if pd.isna(row["coaching_index"]):
+    st.metric("Coaching index", "n/a")
+    st.write("**No data.** No listings on record yet, so there is no index. Context scores are below.")
+else:
+    st.metric("Coaching index", f"{row['coaching_index']:+.2f}",
+              f"range {row['index_low']:+.2f} to {row['index_high']:+.2f}", delta_color="off")
+    st.write(f"**{row['index_group']}.** The index is built from the scored parts below. +1 means about one "
+             "typical step better than the average agent.")
 if row["low_data_flag"]:
     st.warning("Fewer than 5 deals on record. Treat every number here as a first look, not a verdict.")
 
@@ -65,7 +70,12 @@ for col, (part, (label, meaning, kind)) in zip(cols, PARTS.items()):
         continue
     col.metric(label, fmt(row[f"{part}_score"], kind),
                f"range {fmt(row[f'{part}_low'], kind)} to {fmt(row[f'{part}_high'], kind)}", delta_color="off")
-    col.caption(f"{meaning} {row[f'{part}_group']} ({n} {'offers' if part == 'offer_win' else 'deals'}).")
+    unit = ("offer" if part == "offer_win" else "deal") + ("" if n == 1 else "s")
+    col.caption(f"{meaning} {row[f'{part}_group']} ({n} {unit}).")
+if (table[[f"{p}_group" for p in PARTS]] == "Context only").any().any():
+    st.caption("Context only = shown for coaching conversations, not in the index and never called "
+               "clearly above or below average. Buyer scores can't yet be told apart from home quality with "
+               "California tax records; offer win rates can reward clients who simply bid more.")
 
 with st.expander("Context, not scored: speed and pricing style"):
     st.write(f"Days on market vs similar homes: {fmt(row['speed_vs_similar'], 'pct')}. "
@@ -77,7 +87,7 @@ with st.expander("Context, not scored: speed and pricing style"):
 
 # ---- Whole team ----
 st.subheader("Everyone, with ranges")
-view = table.assign(deals=table["seller_n"] + table["buyer_n"]).reset_index()
+view = table[table["coaching_index"].notna()].assign(deals=table["seller_n"] + table["buyer_n"]).reset_index()
 view = view[view["deals"] >= min_deals]
 base = alt.Chart(view).encode(
     y=alt.Y("agent_id:N", sort="-x", axis=None),

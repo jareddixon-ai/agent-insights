@@ -13,6 +13,9 @@ Charts go to docs/ (committed, shown in the README). Numbers go to data/fake/.
 Every score is shown as "higher = better for the client": seller = % sold above what the
 home predicts, buyer = % bought below what the home predicts. 0 = the average agent.
 
+Phase 4.5: the fake data now uses California (Prop 13) assessed values, and the table's
+ranges include a bias allowance. "Used" below means exactly the range the coaching table uses.
+
 Run order: the full pipeline (see README), then this file (about 15 seconds).
 Needs bootstrap_scores.csv and stress_test.csv.
 """
@@ -28,12 +31,12 @@ import pandas as pd
 from sklearn.linear_model import LinearRegression
 
 from agent_model import DATA, build_features
-from score_agents import pick_range
+from score_agents import load_config, table_range
 
 DOCS = Path(__file__).resolve().parent.parent / "docs"
 BUCKETS = [0, 4, 9, 19, 49, np.inf]            # number-of-deals groups
 BUCKET_LABELS = ["1-4", "5-9", "10-19", "20-49", "50+"]
-RANGES = {"formula": "Formula range", "boot": "Bootstrap range", "wider": "Wider of the two (used)"}
+RANGES = {"formula": "Formula range", "boot": "Bootstrap range", "used": "Used in the table (+ bias allowance)"}
 
 # Colors: a tested colorblind-safe set, plus quiet gray ink for text, grid and axes.
 BLUE, ORANGE, AQUA = "#2a78d6", "#eb6834", "#1baf7a"
@@ -51,14 +54,14 @@ plt.rcParams.update({
 
 # ---------- Build the comparison tables ----------
 
-def side_table(boot, truth, side):
+def side_table(boot, truth, side, cfg=None):
     """One row per agent: shrunk score, raw score, three 95% ranges, and the TRUE skill.
     truth is in price units (seller: + is good, buyer: - is good); we flip the buyer side
     so both read 'higher = better for the client'."""
     t = boot.xs(side, level="side").copy()
     t["boot_low"] = t["boot_low"].fillna(t["formula_low"])
     t["boot_high"] = t["boot_high"].fillna(t["formula_high"])
-    t["wider_low"], t["wider_high"] = pick_range(t, "wider")
+    t["used_low"], t["used_high"] = table_range(t, cfg or load_config())
     t["true"] = (truth - truth.mean()).reindex(t.index)   # centered: 0 = average agent
     if side == "buyer":
         for col in ["raw", "score", "true"]:
@@ -85,22 +88,29 @@ def summarize(t):
         "rank_agreement_raw": rank("raw"),
         "error_pts_shrunk": mae("score"),
         "error_pts_raw": mae("raw"),
-        "called_clearly_different": ((t["wider_low"] > 0) | (t["wider_high"] < 0)).sum(),
+        "called_clearly_different": called(t).sum(),
+        # Of the agents called clearly above or below average, how many are on the right side of 0?
+        "clear_calls_right": (np.sign(t["score"]) == np.sign(t["true"]))[called(t)].mean(),
     }
     for m in RANGES:
         out[f"coverage_{m}"] = caught(t, m).mean()
     return out
 
 
+def called(t):
+    """True where the range the table uses excludes 0: a 'clearly above/below average' call."""
+    return (t["used_low"] > 0) | (t["used_high"] < 0)
+
+
 def by_deals(t):
     """Accuracy and range coverage for agents with few vs many deals."""
     g = t.assign(err_raw=(t["raw"] - t["true"]).abs() * 100, err_shrunk=(t["score"] - t["true"]).abs() * 100,
-                 called=(t["wider_low"] > 0) | (t["wider_high"] < 0),
+                 called=called(t),
                  **{f"cov_{m}": caught(t, m) for m in RANGES})
     return g.groupby("bucket", observed=False).agg(
         agents=("true", "size"), error_pts_raw=("err_raw", "mean"), error_pts_shrunk=("err_shrunk", "mean"),
         coverage_formula=("cov_formula", "mean"), coverage_boot=("cov_boot", "mean"),
-        coverage_wider=("cov_wider", "mean"), share_called_clearly=("called", "mean"))
+        coverage_used=("cov_used", "mean"), share_called_clearly=("called", "mean"))
 
 
 def hidden_value(sales, true_values):
@@ -112,14 +122,16 @@ def hidden_value(sales, true_values):
     return pd.Series(y - LinearRegression().fit(X, y).predict(X), index=sales.index)
 
 
-def coverage_across_worlds(seeds=(42, 43, 44, 45, 46)):
+def coverage_across_worlds(seeds=(42, 43, 44, 45, 46), allowance=None):
     """Is the busy-agent coverage drop real or one unlucky draw? Rebuild the fake data in 5 worlds,
     with and without selection bias, and check how often the formula range catches the truth.
     If coverage falls for busy agents ONLY when selection bias is on, the ranges are missing a bias:
-    more deals shrink the range, but they don't shrink a push from hidden home quality."""
+    more deals shrink the range, but they don't shrink a push from hidden home quality.
+    The second row per side adds the bias allowance from config/scoring.json (the 4.5 fix)."""
     import generate_fake_data as gen
     from agent_model import fit_agent_effects
     from shrinkage import shrink
+    allowance = load_config().get("bias_allowance", 0) if allowance is None else allowance
     rows = []
     for seed in seeds:
         for strength, world in [(0.4, "Selection bias on (standard)"), (0.0, "Homes assigned at random")]:
@@ -130,11 +142,16 @@ def coverage_across_worlds(seeds=(42, 43, 44, 45, 46)):
                                         ("buyer", "buyer_effect", "buyer_deals", -skills["buyer_savings"])]:
                 tab = shrink(effects[col], effects[n], resid_sd)
                 tr = (truth - truth.mean()).reindex(tab.index)
-                hit = (tr >= tab["low"]) & (tr <= tab["high"])
                 size = pd.cut(tab["deals"], [0, 19, 49, np.inf], labels=["under 20 deals", "20-49", "50+"])
-                for bucket, share in hit.groupby(size, observed=False).mean().items():
-                    rows.append({"world": world, "side": side, "deals": bucket, "caught": share})
-    out = pd.DataFrame(rows).groupby(["world", "side", "deals"], observed=False, sort=False)["caught"].mean()
+                half = (tab["high"] - tab["low"]) / 2
+                wide = np.sqrt(half**2 + (1.96 * allowance) ** 2)
+                for rng_name, lo, hi in [("formula", tab["low"], tab["high"]),
+                                         ("formula + bias allowance", tab["score"] - wide, tab["score"] + wide)]:
+                    hit = (tr >= lo) & (tr <= hi)
+                    for bucket, share in hit.groupby(size, observed=False).mean().items():
+                        rows.append({"world": world, "side": side, "range": rng_name, "deals": bucket, "caught": share})
+    keys = ["world", "side", "range", "deals"]
+    out = pd.DataFrame(rows).groupby(keys, observed=False, sort=False)["caught"].mean()
     return out.unstack("deals")
 
 
@@ -190,17 +207,17 @@ def chart_validation(tables, stats, path):
     """4-0: each dot is an agent. On the dashed line = estimate matches the truth exactly."""
     fig, axes = plt.subplots(1, 2, figsize=(11, 5))
     for ax, (side, t) in zip(axes, tables.items()):
-        hit = caught(t, "wider")
+        hit = caught(t, "used")
         for mask, color, label in [(hit, BLUE, f"Range caught the truth ({hit.sum()})"),
                                    (~hit, ORANGE, f"Range missed ({(~hit).sum()})")]:
             d = t[mask]
-            ax.vlines(d["true"], d["wider_low"], d["wider_high"], color=color, alpha=0.30, linewidth=1.2)
+            ax.vlines(d["true"], d["used_low"], d["used_high"], color=color, alpha=0.30, linewidth=1.2)
             ax.scatter(d["true"], d["score"], s=22, color=color, edgecolor=SURFACE, linewidth=0.6,
                        label=label, zorder=3)
         lim = max(t["true"].abs().max(), t["score"].abs().max()) * 1.15
         ax.plot([-lim, lim], [-lim, lim], ls="--", color=INK2, lw=1, zorder=2, label="Perfect estimate")
         ax.set_xlim(-lim, lim)
-        ax.set_ylim(min(-lim, t["wider_low"].min()), max(lim, t["wider_high"].max()))
+        ax.set_ylim(min(-lim, t["used_low"].min()), max(lim, t["used_high"].max()))
         pct_axis(ax)
         s = stats[side]
         name = "Seller side: sold above expected" if side == "seller" else "Buyer side: bought below expected"
@@ -214,7 +231,8 @@ def chart_validation(tables, stats, path):
     fig.suptitle("Estimated vs true agent skill (fake data)", x=0.01, ha="left", fontsize=13,
                  fontweight="bold", y=1.03)
     fig.text(0.01, -0.03, "Shrinkage pulls thin records toward 0 on purpose, so the dots sit flatter than the "
-             "dashed line. Ranges are the wider of the formula and bootstrap ranges.", color=INK2, fontsize=8.5)
+             "dashed line. Ranges are the ones the table uses: the wider of the formula and bootstrap ranges,\n"
+             "plus the bias allowance. California (Prop 13) assessed values.", color=INK2, fontsize=8.5)
     save(fig, path)
 
 
@@ -356,7 +374,7 @@ def main(data=DATA, docs=DOCS, seeds=(42, 43, 44, 45, 46)):
     for side, g in deals.items():
         print(f"\n{side.upper()} side by number of deals")
         print(g.round(2).to_string())
-    print("\nRANGE COVERAGE ACROSS 5 FAKE WORLDS (formula range, should be about 0.95)")
+    print("\nRANGE COVERAGE ACROSS 5 FAKE WORLDS (should be about 0.95)")
     print(worlds.round(2).to_string())
     print("\nNO-ANSWER-KEY CHECK: first half vs second half of the sales (raw scores, 5 fake worlds)")
     print(split.round(2).to_string())
