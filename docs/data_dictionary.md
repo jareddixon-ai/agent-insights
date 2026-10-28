@@ -33,6 +33,15 @@ They connect through agent IDs.
 | office | text | Office of the listing agent | Lets us compare within an office |
 | team | text | Team of the listing agent, if any | Teams share credit, so we need to know |
 
+### Optional columns (Phase 5-0)
+
+Not in the default fake data. `src/condition_test.py` adds them to test how much they help.
+
+| Column | Type | Plain meaning | Why we'd want it |
+|---|---|---|---|
+| condition_rating | integer 1-5 | An inspector's or appraiser's grade (1 = needs work, 5 = like new) | Barely helps on its own: the last sale price already carries most lasting quality |
+| value_estimate | dollars | An independent estimate of what the home was worth when it listed (a pre-listing appraisal) | With a typical miss of about 4% or better, buyer scores become usable. It must be made before, and without knowing, the sale price; a loan appraisal made after the contract soaks up the agent's own result |
+
 ## Table 2: agents (one row per agent)
 
 | Column | Type | Plain meaning | Why we need it |
@@ -47,13 +56,23 @@ They connect through agent IDs.
 | Column | Type | Plain meaning | Why we need it |
 |---|---|---|---|
 | offer_id | text | Unique ID for the offer | Counting |
-| listing_id | text | Which listing the offer was on | Links to the sales table |
-| buyer_agent_id | text | Agent who made the offer for the buyer. Can be blank | Offer win rate per buyer agent |
-| offer_price | dollars | Price offered | Shows how far losing offers were from the winner |
+| listing_id | text | Which listing the offer was on | Links to the sales table. Offers on the same listing form one contest |
+| buyer_agent_id | text | Agent who made the offer for the buyer. Can be blank | Offer score per buyer agent |
 | offer_date | date | Day the offer was made | Ordering |
-| outcome | text | `won` or `lost` | Win rate = wins / offers made |
+| list_price_at_offer | dollars | Asking price on the offer day (after any price cuts so far) | Lets us show offers vs asking, and why that misleads |
+| offer_price | dollars | Price offered | The highest price usually wins, so we must compare offers at the same price |
+| financing | text | `cash` or `loan` | Cash offers look safer to sellers |
+| down_payment_pct | number | Down payment, % of price (100 for cash) | Bigger down payments look safer |
+| inspection_contingency | 0/1 | 1 = buyer can back out after an inspection | Contingencies make an offer weaker |
+| appraisal_contingency | 0/1 | 1 = buyer can back out if the appraisal comes in low | Same |
+| loan_contingency | 0/1 | 1 = buyer can back out if the loan falls through | Same |
+| days_to_close | integer | Days from acceptance to closing that the offer proposes | Faster is usually stronger |
+| competing_offers | integer | How many offers that listing got in total | Winning 1 of 8 is harder than 1 of 1 |
+| outcome | text | `won` or `lost` | What the offer score explains |
 
-The winning offer's price equals the sale's `sold_price`.
+The winning offer's price equals the sale's `sold_price`. In the fake data the highest price wins about 85% of the time; otherwise the winner had stronger terms or a stronger agent.
+
+Offers usually arrive as PDFs. `src/extract_offers.py` reads them into these columns and stores no buyer names, phone numbers, emails or notes.
 
 ## Optional: messy exports
 
@@ -68,12 +87,15 @@ Real exports are dirty. `src/make_messy_data.py` writes `sales_messy.csv` with a
 - **Market timing**: a sale in a hot month is not the agent's doing. We adjust for month.
 - **List price games**: a low list price makes "sold over list" look great. We use estimated home value, not list price, as the yardstick.
 - **California tax values (Prop 13)**: assessed value lags far behind market value for long-held homes. Always pair it with the last sale date.
+- **The highest offer usually wins**: so a high win rate can mean clients who pay more. Compare offers on the same home at the same price and terms.
+- **Data that already contains the answer (leakage)**: a loan appraisal made with the contract price in hand, or a condition rating written by the listing agent, soaks up the agent's own result and makes everyone look average.
+- **List price games, again**: listing low draws more offers. Compare offers attracted with listings priced alike.
 
 ## Fake data only: answer keys
 
 These exist only in the fake data. Real brokerages have no such files. We use them to check our model.
 
-- `data/fake/true_skills.csv`: each agent's hidden skill: `seller_premium` (sells for this fraction above what the home is worth), `buyer_savings` (buys this fraction below), `win_skill` (higher means offers win more often).
+- `data/fake/true_skills.csv`: each agent's hidden skill: `seller_premium` (sells for this fraction above what the home is worth), `buyer_savings` (buys this fraction below; their clients also bid this much lower when they lose), `win_skill` (makes the agent's offers look stronger to sellers at the same price and terms: 1 unit is worth about 2% of price).
 - `data/fake/true_home_values.csv`: each home's true value (`true_value`) and hidden quality (`quality`: view, condition) that no column records.
 - Estate specialists (15% of agents, who mostly list long-held homes) are flagged only inside `generate()`, never in a file. `sale_history_test.py` uses the flag to measure bias against them.
 
@@ -94,3 +116,11 @@ All scores are fractions: 0.012 means 1.2%. Every score has a 95% range (`_low`,
 Charts from `src/validate.py` are committed in `docs/`: `validation.png`, `accuracy_by_deals.png`, `stress_test.png`, `hidden_quality.png`.
 - `sale_history_test.csv` (4.5): seller and buyer rank agreement, leftover error, estate-specialist bias and range coverage in 4 settings (Phase 4 data, California without sale history, California with it, true value). Chart: `docs/sale_history.png`.
 - `rankings.csv` (since 4.5): parts with weight 0 in `config/scoring.json` (now buyer and offer_win) have group "Context only". Seller and buyer ranges include the bias allowance.
+
+### Phase 5 outputs
+
+- `condition_test.csv` (5-0): seller and buyer rank agreement, clear calls and how many were right, for each kind and accuracy of condition data, in 3 kinds of world. `condition_why.csv`: what the buyer side is missing (perfect quality, every part of value in the wrong shape, true value). Chart: `docs/condition_data.png`.
+- `offer_scores.csv` (5-2): per agent, the fair offer score (`score`, `low`, `high`: win-chance points versus the average agent in a typical 3-offer contest, on the same home at the same price and terms), `offers` in contests, and offers attracted per listing agent: `attract_home_*` (vs similar homes) and `attract_fair_*` (vs similar homes at a similar list price), as fractions (+0.2 = 20% more offers).
+- `rankings.csv` (since 5): `offer_win_*` is the fair offer score (was the raw win rate). New context columns `offers_attracted`, `offers_attracted_low`, `offers_attracted_high`.
+- `offer_validation.csv` (5-4): raw win rate vs competition-adjusted vs fair offer score graded against the answer key in 3 kinds of world, range coverage, offers attracted, seller/offer error link, and the coaching index with and without the offer score. Chart: `docs/offer_validation.png`.
+- `offer_pdfs/` (5-3): fake offer PDFs (made-up names, 555-01xx phone numbers, example.com emails). `offers_extracted.csv`: what the extractor read back, with no personal details.

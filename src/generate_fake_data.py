@@ -160,6 +160,14 @@ def pick_agents(rng, activity, skill, home_z, strength):
     return np.minimum((u > cdf).sum(axis=1), len(skill) - 1)  # index of chosen agent
 
 
+def market_factor(dates):
+    """Market effect: a spring bump and a slow upward trend. Not the agent's doing."""
+    dates = pd.DatetimeIndex(pd.to_datetime(dates))
+    month = dates.month.to_numpy()
+    years_in = (dates - pd.Timestamp(START_DATE)).days.to_numpy() / 365
+    return np.exp(0.03 * np.cos(2 * np.pi * (month - 5) / 12) + 0.04 * years_in)
+
+
 def make_sales(rng, homes, agents, skills, activity, selection_strength=SELECTION_STRENGTH):
     """Turn homes into sales: pick agents, add dates, prices, list-price games.
     selection_strength > 0: better agents get pricier homes. < 0: cheaper homes. 0: random."""
@@ -184,10 +192,7 @@ def make_sales(rng, homes, agents, skills, activity, selection_strength=SELECTIO
     days = np.maximum(3, rng.gamma(2.0, 15.0, n) + 12 * n_changes).astype(int)
     sold_date = list_date + pd.to_timedelta(days, unit="D")
 
-    # Market effect: a spring bump and a slow upward trend. Not the agent's doing.
-    month = sold_date.month.to_numpy()
-    years_in = (sold_date - pd.Timestamp(START_DATE)).days.to_numpy() / 365
-    market = np.exp(0.03 * np.cos(2 * np.pi * (month - 5) / 12) + 0.04 * years_in)
+    market = market_factor(sold_date)
 
     # Sold price: true value, times the market, times BOTH agents' effects.
     seller_effect = 1 + skills["seller_premium"].to_numpy()[li]
@@ -256,52 +261,160 @@ def add_sale_history(sales, homes, agents, seed=SEED):
     return out, estate
 
 
+CONDITION_CUTS = [-1.5, -0.5, 0.5, 1.5]  # 1-5 scale: about 7% / 24% / 38% / 24% / 7% of homes
+
+
+def add_condition_rating(sales, homes, skills, accuracy, seed=SEED, puffery=0.0):
+    """Phase 5-0 what-if: a 1-to-5 condition rating (1 = needs work, 5 = like new), like an
+    inspector's or appraiser's grade. It is a noisy read of the hidden quality column.
+    accuracy = how closely the rating tracks hidden quality before rounding to 1-5
+    (1.0 = perfect read, 0 = pure guess). Rounding to 5 steps loses a little more.
+    puffery > 0: the LISTING AGENT writes the rating, and better sellers rate their own
+    listings higher (puffery = how many rating steps per standard deviation of skill).
+    Own random stream, so every other column stays identical."""
+    rng = np.random.default_rng([seed, 5])
+    q = homes["quality"].to_numpy()
+    z = (q - q.mean()) / q.std()
+    latent = accuracy * z + np.sqrt(max(1 - accuracy**2, 0.0)) * rng.normal(0.0, 1.0, len(q))
+    if puffery:
+        skill = skills.set_index("agent_id")["seller_premium"]
+        skill_z = ((skill - skill.mean()) / skill.std()).reindex(sales["listing_agent_id"]).to_numpy()
+        latent = latent + puffery * skill_z
+    out = sales.copy()
+    out["condition_rating"] = 1 + np.searchsorted(CONDITION_CUTS, latent)
+    return out
+
+
+def add_value_estimate(sales, homes, error, seed=SEED, anchor=0.0):
+    """Phase 5-0 what-if: an independent estimate of what the home is worth when it lists,
+    for example a pre-listing appraisal. error = its typical miss (0.03 = about 3%).
+    anchor > 0: the estimate is pulled toward the price the home actually sold for
+    (anchor = 0.5 means halfway). Loan appraisals are done after the contract is signed,
+    with the contract price in hand, so they behave like this. Own random stream."""
+    rng = np.random.default_rng([seed, 6])
+    worth_at_listing = homes["true_value"].to_numpy() * market_factor(sales["list_date"])
+    log_est = np.log(worth_at_listing) + rng.normal(0.0, error, len(sales))
+    if anchor:
+        log_est = (1 - anchor) * log_est + anchor * np.log(sales["sold_price"].to_numpy())
+    out = sales.copy()
+    out["value_estimate"] = np.exp(log_est).round(-3)
+    return out
+
+
+# Offer terms: how much each one is worth to a seller, as a share of price (made-up sizes for the demo).
+# A cash offer with no contingencies can beat a slightly higher offer that needs a loan.
+TERM_VALUE = {"cash": 0.012, "per_10_pts_down": 0.003, "inspection": -0.006, "appraisal": -0.004,
+              "loan": -0.006, "per_day_over_21": -0.0002}
+WIN_SKILL_VALUE = 0.02    # 1 unit of hidden win_skill makes an offer look 2% stronger (presentation, timing, trust)
+BID_SPREAD = 0.03         # how much competing buyers' prices differ (budgets, taste)
+LOSER_LEVEL = -0.01       # losing bidders aim a little under where the winner landed, on average
+CANDIDATES = 20           # would-be bidders drawn per listing; the ones who would have lost become losing offers
+
+
+def offer_terms(rng, n):
+    """Financing, down payment, contingencies and closing time for n offers, and how strong
+    those terms make an offer look to the seller (in share of price)."""
+    cash = rng.random(n) < 0.25
+    down = np.where(cash, 100, rng.choice([10, 20, 25, 30, 40, 50], n, p=[0.1, 0.35, 0.2, 0.15, 0.12, 0.08]))
+    inspection = rng.random(n) < 0.7
+    appraisal = ~cash & (rng.random(n) < 0.6)
+    loan = ~cash & (rng.random(n) < 0.75)
+    days = rng.choice([14, 21, 30, 45], n, p=[0.15, 0.3, 0.4, 0.15])
+    v = TERM_VALUE
+    strength = (v["cash"] * cash + v["per_10_pts_down"] * np.where(cash, 0, (down - 20) / 10)
+                + v["inspection"] * inspection + v["appraisal"] * appraisal + v["loan"] * loan
+                + v["per_day_over_21"] * (days - 21) + rng.normal(0.0, 0.006, n))   # letters, escalation clauses...
+    terms = pd.DataFrame({"financing": np.where(cash, "cash", "loan"), "down_payment_pct": down,
+                          "inspection_contingency": inspection.astype(int),
+                          "appraisal_contingency": appraisal.astype(int),
+                          "loan_contingency": loan.astype(int), "days_to_close": days})
+    return terms, strength
+
+
 def make_offers(sales, agents, skills, activity, seed=SEED):
-    """Every sale had one winning offer (the sold price). Add the offers that LOST.
-    Agents with higher hidden win_skill show up less often among the losers,
-    so their win rate (wins / offers made) is higher. Own random stream: other files unchanged."""
+    """Every sale had one winning offer (the sold price). Add the offers that LOST, the way
+    real offers work (Phase 5-1):
+      - each offer's strength = its price + its terms + the buyer agent's hidden win_skill;
+        the strongest offer wins, so the highest price USUALLY wins, but not always;
+      - buyer agents whose clients save more (buyer_savings) also bid lower when they lose;
+      - listings draw more offers when the listing agent is a stronger seller, the list price
+        is low (a pricing tactic), the home is cheaper, or it is spring.
+    Losing offers are would-be bidders who would NOT have beaten the real winner, so every
+    sale and its sold price stay exactly as before. Own random stream: other files unchanged."""
     rng = np.random.default_rng([seed, 3])
-    n, n_agents = len(sales), len(agents)
-    ids = agents["agent_id"].to_numpy()
-    sold = pd.to_datetime(sales["sold_date"])
-    listed = pd.to_datetime(sales["list_date"])
+    n, ids = len(sales), agents["agent_id"].to_numpy()
+    sk = skills.set_index("agent_id").reindex(ids)
+    savings, win = sk["buyer_savings"].to_numpy(), sk["win_skill"].to_numpy()
+    sold, listed = pd.to_datetime(sales["sold_date"]), pd.to_datetime(sales["list_date"])
+    span = (sold - listed).dt.days.to_numpy()
 
-    winners = pd.DataFrame(
-        {
-            "listing_id": sales["listing_id"],
-            "buyer_agent_id": sales["buyer_agent_id"],
-            "offer_price": sales["sold_price"],
-            "offer_date": (sold - pd.Timedelta(days=2)).dt.date,
-            "outcome": "won",
-        }
-    )
+    # The winner. Prices are measured against the winning price: log(price / sold price).
+    w_idx = pd.Series(np.arange(len(ids)), index=ids).reindex(sales["buyer_agent_id"]).to_numpy()
+    has_w = ~np.isnan(w_idx)
+    w_idx = np.where(has_w, w_idx, 0).astype(int)
+    w_save, w_win = np.where(has_w, savings[w_idx], 0.0), np.where(has_w, win[w_idx], 0.0)
+    w_terms, w_t = offer_terms(rng, n)
+    w_strength = w_t + WIN_SKILL_VALUE * w_win
 
-    # Losing offers: 0 to 6 per listing, about 1.5 on average.
-    n_lose = np.minimum(rng.poisson(1.5, n), 6)
-    row = np.repeat(np.arange(n), n_lose)
-    weight = activity * np.exp(-1.0 * skills["win_skill"].to_numpy())
-    agent_idx = rng.choice(n_agents, size=len(row), p=weight / weight.sum())
-    # A losing bidder can't be the listing agent.
-    clash = ids[agent_idx] == sales["listing_agent_id"].to_numpy()[row]
-    agent_idx = np.where(clash, (agent_idx + 1) % n_agents, agent_idx)
-    no_agent = rng.random(len(row)) < NO_BUYER_AGENT_SHARE
-    price = sales["sold_price"].to_numpy()[row] * (1 - (0.005 + rng.gamma(1.5, 0.012, len(row))))
-    span = (sold - listed).dt.days.to_numpy()[row]
-    offset = np.floor(rng.random(len(row)) * np.maximum(span - 1, 1)).astype(int)
-    losers = pd.DataFrame(
-        {
-            "listing_id": sales["listing_id"].to_numpy()[row],
-            "buyer_agent_id": np.where(no_agent, "", ids[agent_idx]),
-            "offer_price": price.round(-3),
-            "offer_date": (listed.to_numpy()[row] + pd.to_timedelta(offset, unit="D")).date,
-            "outcome": "lost",
-        }
-    )
+    # How many losing offers each listing draws.
+    seller = sk["seller_premium"]
+    seller_z = ((seller - seller.mean()) / seller.std()).reindex(sales["listing_agent_id"]).to_numpy()
+    list_bias = (sales["original_list_price"] / sales["sold_price"] - 1).to_numpy()   # + = listed above
+    log_p = np.log(sales["sold_price"].to_numpy())
+    home_z = (log_p - log_p.mean()) / log_p.std()
+    spring = np.cos(2 * np.pi * (sold.dt.month.to_numpy() - 4) / 12)
+    expected = 1.4 * np.exp(0.35 * seller_z - 6 * list_bias - 0.3 * home_z + 0.2 * spring)
+    target = np.minimum(rng.poisson(expected), 9)
 
+    # Would-be bidders: busier agents bid more often. Not the listing agent or the winner's agent.
+    c_agent = rng.choice(len(ids), size=(n, CANDIDATES), p=activity / activity.sum())
+    for _ in range(2):
+        clash = (ids[c_agent] == sales["listing_agent_id"].to_numpy()[:, None]) | \
+                (has_w[:, None] & (c_agent == w_idx[:, None]))
+        c_agent = np.where(clash, (c_agent + 1) % len(ids), c_agent)
+    c_none = rng.random((n, CANDIDATES)) < NO_BUYER_AGENT_SHARE
+    c_save = np.where(c_none, 0.0, savings[c_agent])
+    c_win = np.where(c_none, 0.0, win[c_agent])
+    winner_luck = rng.normal(0.0, 0.02, n)   # stands in for the winner's bidding luck in make_sales
+    gap = (LOSER_LEVEL + (w_save[:, None] - c_save) + rng.normal(0.0, BID_SPREAD, (n, CANDIDATES))
+           - winner_luck[:, None])
+    c_terms, c_t = offer_terms(rng, n * CANDIDATES)
+    c_strength = gap + c_t.reshape(n, CANDIDATES) + WIN_SKILL_VALUE * c_win
+    loses = c_strength < w_strength[:, None]
+    keep = loses & (np.cumsum(loses, axis=1) <= target[:, None])
+    row, col = np.nonzero(keep)
+    flat = row * CANDIDATES + col
+
+    offset = np.floor(rng.random(len(row)) * np.maximum(span[row] - 2, 1)).astype(int)
+    losers = pd.DataFrame({
+        "listing_id": sales["listing_id"].to_numpy()[row],
+        "buyer_agent_id": np.where(c_none[row, col], "", ids[c_agent[row, col]]),
+        "days_in": offset,
+        "offer_price": (sales["sold_price"].to_numpy()[row] * np.exp(gap[row, col])).round(-3),
+        "outcome": "lost",
+    }).join(c_terms.iloc[flat].reset_index(drop=True))
+    winners = pd.DataFrame({
+        "listing_id": sales["listing_id"], "buyer_agent_id": sales["buyer_agent_id"],
+        "days_in": np.maximum(span - 2, 0), "offer_price": sales["sold_price"], "outcome": "won",
+    }).join(w_terms)
     offers = pd.concat([winners, losers], ignore_index=True)
-    offers = offers.sort_values(["listing_id", "offer_date"], kind="stable").reset_index(drop=True)
+
+    # Asking price on the offer day: price cuts are spread evenly over the time on market.
+    s = sales.set_index("listing_id")
+    k = offers["listing_id"]
+    cuts_so_far = np.floor(offers["days_in"].to_numpy() * (s["num_price_changes"].reindex(k).to_numpy() + 1)
+                           / np.maximum(s["days_on_market"].reindex(k).to_numpy(), 1))
+    cuts_so_far = np.minimum(cuts_so_far, s["num_price_changes"].reindex(k).to_numpy())
+    offers["list_price_at_offer"] = (s["original_list_price"].reindex(k).to_numpy() * 0.97 ** cuts_so_far).round(-3)
+    offers["offer_date"] = (pd.to_datetime(s["list_date"].reindex(k).to_numpy())
+                            + pd.to_timedelta(offers["days_in"], unit="D")).dt.date
+    offers["competing_offers"] = offers.groupby("listing_id")["listing_id"].transform("size")
+    offers = offers.sort_values(["listing_id", "offer_date", "outcome"], kind="stable").reset_index(drop=True)
     offers.insert(0, "offer_id", [f"O{i:05d}" for i in range(1, len(offers) + 1)])
-    return offers
+    cols = ["offer_id", "listing_id", "buyer_agent_id", "offer_date", "list_price_at_offer", "offer_price",
+            "financing", "down_payment_pct", "inspection_contingency", "appraisal_contingency",
+            "loan_contingency", "days_to_close", "competing_offers", "outcome"]
+    return offers[cols]
 
 
 def run_checks(sales, homes, skills):

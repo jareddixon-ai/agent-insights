@@ -1,8 +1,15 @@
-# Statistics review (Phase 4)
+# Statistics review (Phase 4, updated through Phase 5)
 
 Prompt used: "Act as a skeptical statistician reviewing agent-insights. Find the three biggest ways these agent scores could be unfair or wrong. For each one, give the simplest fix. Be direct."
 
 This review was written by Claude after building the validation in `src/validate.py`. Getting an outside statistician to read it before a pilot is still worth doing: the people who built a model are the worst at spotting its blind spots.
+
+## Update after Phase 5
+
+- **Correction: "hidden quality, fix it with condition data" was only half right.** A 1-to-5 condition rating, even a perfect one, moves buyer rank agreement from 0.17 to 0.20 (`src/condition_test.py`). In California data the last sale price already carries most of a home's lasting quality. What is still hidden is what changed since that sale, luck in that sale, and the price model's shape: it is wrong at the cheap and expensive ends, and selection bias lines that error up with skill. Knowing every part of value but in the wrong shape gives 0.54; true value gives 0.87. What works is an independent estimate of what the home is worth when it lists: about 4% typical miss or better (about 3% median miss against the sale price) clears the bar in every kind of world, and also fixes the seller score's lean on selection bias (0.80 / 0.75 / 0.75 instead of 0.71 / 0.58 / 0.31).
+- **New trap: "helpful" data that contains the answer.** A loan appraisal is made after the contract, with the price in hand. In the test it looks like the best estimate of all (1% median miss against the sale price) but it soaks up half of each agent's effect, so almost no agent is called clearly different. A condition rating written by the listing agent does the same to the seller score (0.71 to 0.55 in the standard world, 0.31 to 0.00 when good agents get cheaper homes).
+- **Issue 3 (offer win rate): fixed with a different metric, not yet turned on.** Fake offers now depend on price and terms, and the raw win rate indeed rewards overpaying (rank agreement -0.42 with buyer savings). The fair offer score compares offers on the same home at the same price and terms (a conditional logit, the standard model for 1 winner out of N). Hidden home quality cancels because every offer in a contest is on the same home. Rank agreement with hidden win skill 0.89 (raw: 0.46), 98% of its clear calls right. It still missed the rule set before testing: ranges catch the truth 87% to 88% (rule 90%), and it leans slightly toward clients who pay less (up to 0.16, rule 0.15). Weight stays 0 until wider ranges pass on fresh worlds.
+- **Smaller issue measured: seller and offer score errors are not linked** (correlation 0.00 to 0.04), so the index's independence assumption holds for that pair. Seller and buyer are still unmeasured.
 
 ## Update after Phase 4.5
 

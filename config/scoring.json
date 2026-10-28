@@ -5,7 +5,7 @@
     "buyer": 0.0,
     "offer_win": 0.0
   },
-  "_weights_note": "Phase 4.5: buyer and offer weights set to 0. With California tax values the buyer score matches true skill only weakly (0.16) and its clear calls are right less than half the time; offer win rate can reward clients who bid high. Phase 3 weights were seller 0.5, buyer 0.3, offer_win 0.2. Turn a part back on only after validate.py shows it works on the data you have.",
+  "_weights_note": "Phase 5: still seller only. Buyer score: needs an independent value estimate of the home (about 4% typical miss or better, made before and without the sale price); a 1-5 condition rating, even a perfect one, barely helps (src/condition_test.py). Offer score: since Phase 5 this is the fair offer score (same home, same price and terms), not the raw win rate. It ranks agents well (0.89) and 98% of its clear calls are right, but it missed the rule set before testing: its 95% ranges catch the truth 87-88% of the time (rule: 90%) and it leans slightly toward agents whose clients pay less (0.16 in one kind of world, rule: 0.15). Next test: widen its ranges using these worlds, confirm on new ones (src/offer_validate.py). Phase 3 weights were seller 0.5, buyer 0.3, offer_win 0.2. Turn a part back on only after validation shows it works on the data you have.",
   "_range_options": "Which 95% range decides 'clearly above/below average': formula (2C), bootstrap (3-3), or wider (whichever is wider, so we never overclaim).",
   "range": "wider",
   "bias_allowance": 0.008,

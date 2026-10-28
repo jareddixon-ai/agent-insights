@@ -42,6 +42,14 @@ def build_features(sales, date_col="sold_date", start=None):
     if "prior_sale_date" in sales:
         X["years_owned"] = (sold - pd.to_datetime(sales["prior_sale_date"])).dt.days / 365
         X["log_prior_sale"] = np.log(sales["prior_sale_price"])
+    # Condition rating (Phase 5-0, optional): an inspector's or appraiser's 1-to-5 grade.
+    # Must come from someone other than the listing agent, or it can soak up the agent's skill.
+    if "condition_rating" in sales:
+        X["condition"] = sales["condition_rating"].astype(float)
+    # Independent value estimate (Phase 5-0, optional), for example a pre-listing appraisal.
+    # Same warning: it must be made before, and without knowing, the sale price.
+    if "value_estimate" in sales:
+        X["log_value_estimate"] = np.log(sales["value_estimate"])
     X = X.join(pd.get_dummies(sales["zip"], prefix="zip", dtype=float))
     X = X.join(pd.get_dummies(sold.dt.month, prefix="month", dtype=float))
     return X

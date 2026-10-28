@@ -18,7 +18,8 @@ GROUP_COLORS = ["#2a78d6", "#898781", "#eb6834"]   # color follows the group, ne
 PARTS = {  # name in rankings.csv -> (label, one-sentence meaning, how to show the number)
     "seller": ("Seller side", "Sells homes for this much above or below what the home predicts.", "pct"),
     "buyer": ("Buyer side", "Buys homes for clients this much below or above what the home predicts.", "pct"),
-    "offer_win": ("Offers that win", "Share of offers won, versus the brokerage average (percentage points).", "pts"),
+    "offer_win": ("Offers that win", "On the same home, at the same price and terms, how much more often this "
+                  "agent's offers win (win-chance points in a typical 3-offer contest).", "pts"),
 }
 
 
@@ -74,16 +75,20 @@ for col, (part, (label, meaning, kind)) in zip(cols, PARTS.items()):
     col.caption(f"{meaning} {row[f'{part}_group']} ({n} {unit}).")
 if (table[[f"{p}_group" for p in PARTS]] == "Context only").any().any():
     st.caption("Context only = shown for coaching conversations, not in the index and never called "
-               "clearly above or below average. Buyer scores can't yet be told apart from home quality with "
-               "California tax records; offer win rates can reward clients who simply bid more.")
+               "clearly above or below average. Buyer scores need an independent value estimate of each home "
+               "to be trusted. The offer score already allows for price and terms, but its ranges are still a "
+               "little too narrow in testing, so it waits for one more check.")
 
-with st.expander("Context, not scored: speed and pricing style"):
+with st.expander("Context, not scored: speed, pricing style and offers attracted"):
     st.write(f"Days on market vs similar homes: {fmt(row['speed_vs_similar'], 'pct')}. "
              f"Typical first list price vs model value: {fmt(row['list_vs_value'], 'pct')}. "
-             f"Share of listings with a price cut: {row['share_with_price_cut']:.0%}." if pd.notna(
-                 row["speed_vs_similar"]) else "No listings on record.")
+             f"Share of listings with a price cut: {row['share_with_price_cut']:.0%}. "
+             f"Offers drawn vs similar listings at a similar list price: {fmt(row['offers_attracted'], 'pct')} "
+             f"(range {fmt(row['offers_attracted_low'], 'pct')} to {fmt(row['offers_attracted_high'], 'pct')})."
+             if pd.notna(row["speed_vs_similar"]) else "No listings on record.")
     st.caption("The agent chooses the list price, so these describe style, not skill. "
-               "Listing high goes with slower sales, but listing close to value does not predict better results.")
+               "Listing high goes with slower sales, but listing close to value does not predict better results. "
+               "Listing low draws more offers, so offers attracted is compared with listings priced alike.")
 
 # ---- Whole team ----
 st.subheader("Everyone, with ranges")

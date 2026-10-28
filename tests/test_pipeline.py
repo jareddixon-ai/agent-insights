@@ -42,11 +42,13 @@ def test_sales_basic_rules(data_dir):
     assert (s["listing_agent_id"] != s["buyer_agent_id"]).all()
 
 
-def test_offers_winner_is_highest_offer(data_dir):
+def test_offers_one_winner_at_the_sold_price(data_dir):
     s, o = read(data_dir, "sales.csv"), read(data_dir, "offers.csv")
     assert (o.groupby("listing_id")["outcome"].apply(lambda x: (x == "won").sum()) == 1).all()
-    top = o.groupby("listing_id")["offer_price"].max()
-    assert (top == s.set_index("listing_id")["sold_price"]).all()
+    won = o[o["outcome"] == "won"].set_index("listing_id")["offer_price"]
+    assert (won == s.set_index("listing_id")["sold_price"].reindex(won.index)).all()
+    top = o.groupby("listing_id")["offer_price"].max().reindex(won.index)
+    assert 0.75 < (won >= top).mean() < 0.97      # since Phase 5: the highest price USUALLY wins, not always
 
 
 # ---- Cleaning ----

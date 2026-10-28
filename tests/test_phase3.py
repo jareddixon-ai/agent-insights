@@ -61,7 +61,7 @@ def test_bootstrap_ranges_and_small_sample_flag(data_dir):
 # ---- 3-4 Coaching index ----
 def test_coaching_table_is_honest(data_dir):
     import bootstrap_ranges as br
-    import offer_win_rates
+    import offer_metrics
     import score_agents
     import speed_and_pricing
     sales = read(data_dir, "sales.csv")
@@ -69,10 +69,11 @@ def test_coaching_table_is_honest(data_dir):
     ds, db = br.bootstrap(sales, n_resamples=20)
     boot = pd.concat({"seller": br.summarize(full_s, ds), "buyer": br.summarize(full_b, db)},
                      names=["side", "agent_id"])
-    wins = offer_win_rates.win_rates(read(data_dir, "offers.csv"))
-    speed = speed_and_pricing.speed_and_pricing(sales, price_model.cross_validated_predictions(sales))
+    pred = price_model.cross_validated_predictions(sales)
+    offer = offer_metrics.offer_table(sales, read(data_dir, "offers.csv"), pred, penalty=0.25)
+    speed = speed_and_pricing.speed_and_pricing(sales, pred)
     cfg = score_agents.load_config()
-    t = score_agents.build_table(boot, wins, speed, read(data_dir, "agents.csv"), cfg)
+    t = score_agents.build_table(boot, offer, speed, read(data_dir, "agents.csv"), cfg)
 
     assert "Not clearly different from average" in set(t["index_group"])   # the honest middle exists
     t = t[t["coaching_index"].notna()]                                       # agents with no listings have no index

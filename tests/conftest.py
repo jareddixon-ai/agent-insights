@@ -27,7 +27,7 @@ def scored_dir(tmp_path_factory, data_dir):
     import shutil
 
     import bootstrap_ranges as br
-    import offer_win_rates
+    import offer_metrics
     import price_model
     import score_agents
     import speed_and_pricing
@@ -42,10 +42,13 @@ def scored_dir(tmp_path_factory, data_dir):
     boot = pd.concat({"seller": br.summarize(full_s, ds), "buyer": br.summarize(full_b, db)},
                      names=["side", "agent_id"])
     boot.to_csv(out / "bootstrap_scores.csv")
-    wins = offer_win_rates.win_rates(pd.read_csv(out / "offers.csv", keep_default_na=False))
-    speed = speed_and_pricing.speed_and_pricing(sales, price_model.cross_validated_predictions(sales))
+    pred = price_model.cross_validated_predictions(sales)
+    offer = offer_metrics.offer_table(sales, pd.read_csv(out / "offers.csv", keep_default_na=False), pred,
+                                      penalty=0.25)   # fixed penalty: skips the cross-validation, faster
+    offer.to_csv(out / "offer_scores.csv", index_label="agent_id")
+    speed = speed_and_pricing.speed_and_pricing(sales, pred)
     agents = pd.read_csv(out / "agents.csv", keep_default_na=False)
-    table = score_agents.build_table(boot, wins, speed, agents, score_agents.load_config())
+    table = score_agents.build_table(boot, offer, speed, agents, score_agents.load_config())
     table.to_csv(out / "rankings.csv", index_label="agent_id")
     stress = pd.DataFrame({label: stress_test.run_one(42, strength, oracle)
                            for label, strength, oracle in stress_test.SCENARIOS}).T
