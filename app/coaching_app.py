@@ -7,6 +7,8 @@ Two views:
   Report card   : one agent against anonymous peers (shown only with 10+ peers), 2 or 3 coaching points.
 
 A private copy points at its own scored folder with AGENT_INSIGHTS_DATA (src/run_private.py prints the command).
+With no scores in data/fake/ and no private folder set (the hosted public demo), it reads the committed
+fake snapshot in demo/ (src/build_demo.py).
 """
 
 import json
@@ -22,8 +24,10 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 from coaching_points import coaching_points  # noqa: E402
 from score_agents import apply_weights  # noqa: E402
+from build_demo import choose_data  # noqa: E402
 
-DATA = Path(os.environ.get("AGENT_INSIGHTS_DATA", ROOT / "data" / "fake"))
+
+DATA, IS_DEMO = choose_data()
 CONFIG = ROOT / "config" / "scoring.json"
 NOT_CLEAR = "Not clearly different from average"
 GROUPS = ["Clearly above average", NOT_CLEAR, "Clearly below average"]
@@ -115,6 +119,10 @@ st.title("Agent coaching view")
 st.caption("FAKE DATA. Every score compares the agent with the average agent at this brokerage, after "
            "adjusting for the home, zip and month. Each number has a 95% range (where the true value very likely "
            "sits): if the range includes 0, we can't tell this agent from average yet. That is an honest, common answer.")
+
+if IS_DEMO:
+    st.info("Public demo: a saved snapshot of the fake data (150 made-up agents, seed 42, 1,000 bootstrap "
+            "resamples). No real agent, client or brokerage is in it.")
 
 if not (DATA / "rankings.csv").exists():
     st.error("rankings.csv not found. Run the pipeline first (README, 'Run it'), ending with score_agents.py.")

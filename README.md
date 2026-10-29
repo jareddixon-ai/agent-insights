@@ -1,5 +1,7 @@
 # agent-insights
 
+[![tests](https://github.com/jareddixon-ai/agent-insights/actions/workflows/tests.yml/badge.svg)](https://github.com/jareddixon-ai/agent-insights/actions/workflows/tests.yml)
+
 Coaching tool that shows real estate brokerages how well each agent does for clients: what homes sold for versus what they were worth, what buyers paid, and how often an agent's offers win. The public version runs on **fake data only** (Santa Barbara-style prices, California tax records). A brokerage runs a private copy on its own data.
 
 Results are framed as coaching, not rankings: every score is a percent versus the average agent, with an honest range. A range that includes 0 means "not clearly different from average yet".
@@ -30,6 +32,8 @@ Results are framed as coaching, not rankings: every score is a percent versus th
 22. **Coaching points** (`src/coaching_points.py`): turns one agent's row into 2 or 3 one-sentence points, with rules on when a strength or focus area may be named.
 23. **Private copy** (`config/column_mapping.json`, `src/readiness_check.py`, `src/run_private.py`): a brokerage points its own column names at ours, gets a plain-English readiness report, and scores its own data with no code edits. `src/make_fake_export.py` makes a messy fake export to try it on. See "Private copy" below.
 
+24. **Public demo** (`src/build_demo.py`, `demo/`): a saved snapshot of the fake scores so the hosted dashboard opens instantly. See "Public demo and pitch kit" below.
+
 ## Run it
 
 ```bash
@@ -50,6 +54,7 @@ cd ..
 python src/readiness_check.py --mapping config/column_mapping_demo.json   # what's there, what's missing
 python src/run_private.py --mapping config/column_mapping_demo.json --resamples 200   # about 1 minute
 streamlit run app/coaching_app.py
+python src/build_demo.py                 # only when results change: rebuilds the demo/ snapshot, about 3 minutes
 pytest                                   # automated tests, about 2 minutes
 ```
 
@@ -176,6 +181,14 @@ A skeptical statistics review of the whole method, with what has been fixed sinc
 ## Traps this project handles
 
 Selection bias, small samples, market timing, list-price games, hidden home quality, California tax values, target leakage (including "helpful" data that already contains the answer), and win rates that reward overpaying. See `docs/data_dictionary.md`.
+
+## Public demo and pitch kit
+
+**Public demo.** The dashboard can be hosted for free on Streamlit Community Cloud straight from this repo (main file `app/coaching_app.py`, Python 3.12). Generated data is never committed, so the hosted app reads `demo/`: two small fake files (`rankings.csv`, `trends.csv`) written by `python src/build_demo.py` with the same seed and 1,000 bootstrap resamples as "Run it". A faster rebuild with 200 resamples moves one agent across the line (7 "clearly above" instead of 6), so the demo uses the saved snapshot instead, and a test checks it still matches. The app reads `demo/` only when `data/fake/` has no scores and no private folder is set; a private copy never falls back to fake numbers.
+
+**Tests on every push.** `.github/workflows/tests.yml` runs the full test suite on GitHub after every push (the badge at the top). It needs no secrets: the tests build their own fake data.
+
+**Pitch kit numbers.** The pitch kit quotes only results on fake data. `docs/pitch_numbers.md` lists each number, what it means and the README text it comes from; a test fails if any of them stops matching. One more figure the kit uses, from the readiness check on the fake data: with a median of 19 listings per agent, expect most agents to be "not clearly different from average" (fake data: 135 of 150 at a median of 19).
 
 ## Ethics
 

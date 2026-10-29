@@ -1,0 +1,27 @@
+# Runs the test suite on GitHub's computers after every push and pull request.
+# Fake data only: the tests build their own fake data in a temp folder. No secrets are used.
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install pinned packages
+        run: pip install -r requirements.txt
+      - name: Run tests
+        run: pytest -q
