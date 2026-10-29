@@ -25,6 +25,7 @@ Results are framed as coaching, not rankings: every score is a percent versus th
 17. **Fair offer metrics** (`src/offer_metrics.py`): the fair offer score compares offers on the same home at the same price and terms; offers attracted compares listings with similar listings priced alike.
 18. **Offer PDFs and extractor** (`src/make_offer_pdfs.py`, `src/extract_offers.py`): fake offer PDFs with made-up buyers, and an extractor that keeps the numbers and stores no names, emails, phones or notes.
 19. **Offer validation** (`src/offer_validate.py`): grades the offer metrics against the answer key in 15 fake worlds and decides, by a rule set in advance, whether the offer score earns weight.
+20. **Offer score follow-up** (`src/offer_calibrate.py`, `src/offer_lean_test.py`): widens the offer score's ranges on one set of fake worlds and confirms on fresh ones; then tests whether its lean comes from how the fake losing offers are made.
 
 ## Run it
 
@@ -39,6 +40,7 @@ python bootstrap_ranges.py && python offer_metrics.py && python score_agents.py 
 python validate.py && python sale_history_test.py && python condition_test.py     # charts in docs/, about 1 minute
 python make_offer_pdfs.py && python extract_offers.py   # 100 fake offer PDFs, about 30 seconds
 python offer_validate.py                                # 15 fake worlds, about 7 minutes
+python offer_calibrate.py && python offer_lean_test.py  # 45 fake worlds, about 25 minutes (cached after the first run)
 cd ..
 streamlit run app/coaching_app.py
 pytest                                   # automated tests
@@ -90,9 +92,18 @@ Fake offers now work like real ones: each has a price, financing, down payment, 
 
 - **Raw win rate rewards overpaying.** Agents whose clients pay more win more: rank agreement with buyer savings -0.42. Adjusting only for the number of competing offers doesn't fix it.
 - **The fair offer score asks one question:** on the same home, at the same price and terms, how often does this agent's offer win? It compares offers within each home (a conditional logit, the standard model for 1 winner out of N), so hidden home quality cancels out. Rank agreement with hidden win skill 0.89 (raw: 0.46), no reward for overpaying, and 98% of its clear calls are right. It also recovers what sellers treat each term as worth: cash about 1% of price, each contingency about 0.4% to 0.6%.
-- **It does not get weight yet.** The rule set before testing asked for ranges that catch the truth 90% of the time; they catch it 87% to 88%. It also leans slightly toward agents whose clients pay less (up to 0.16; the rule allowed 0.15). Next: widen its ranges using these worlds and confirm on fresh ones. On these worlds, adding it would lift agreement with the full blend of true skills from 0.55 to 0.64 (standard world).
+- **It still does not get weight.** The rule set before testing asks for ranges that catch the truth 90% of the time and a lean toward agents whose clients pay less of at most 0.15. See the follow-up below.
 - **Offers attracted** (listing agents): how many more (or fewer) offers this agent's listings draw than similar listings, in %. Listing low draws more offers, so the fair version compares listings priced alike (rank agreement with seller skill 0.74, vs 0.66 home-only). Context only.
 - **Offer PDFs**: `make_offer_pdfs.py` writes fake offers in two layouts with made-up buyers. `extract_offers.py` reads them back exactly and refuses any row that would store a buyer's name, email or phone. Notes are dropped entirely, because removing names is not enough ("our kids start at Roosevelt in fall" still says who they are).
+
+### Follow-up (Oct 28): wider ranges, and where the lean comes from
+
+![Offer score follow-up](docs/offer_followup.png)
+
+- **Widening, sized on one set of worlds, checked on fresh ones.** On seeds 42-46 the ranges missed mostly for agents with 80+ offers (83% caught), the sign of a small steady bias rather than noise. So the ranges get an allowance of 0.1% of price, added like an independent error (`offer_range` in `config/scoring.json`): narrow ranges grow most. That reached 90% in every kind of world. On fresh seeds 47-51, with the setting frozen: 91.5% / 93.7% / 89.7%.
+- **The rule still fails, in one world.** Where good agents get cheaper homes, coverage is 89.7% (rule 90%) and the lean is 0.165 (rule 0.15). Widening can't fix a lean: it changes the range, not the score. Weights stay seller only.
+- **The lean comes from the fake data.** Our fake losing offers are drawn after the sale, priced around the winner. When a thrifty agent's client wins at a low price, the rivals are placed relative to that low price, so the agent looks like it beat higher offers. In a side world with full contests (same bidders and terms, every price drawn the same way, strongest offer wins), the lean is 0.00 to 0.01 and ranges catch the truth 94% to 96% with no widening. The cost: win-skill agreement 0.84 to 0.87 and fewer clear calls, because full contests have more luck in who wins.
+- **What we did not do:** grade the rule on the side world and turn the weight on. The rule was set for the standard worlds and it failed there. The honest next step is to make full contests the standard fake offers and run the same rule on new seeds.
 
 ## Validation
 
@@ -113,13 +124,15 @@ Average sold price looks smart only when good agents happen to get pricier homes
 ## Honest failure list
 
 1. **Hidden home quality is the main problem, on both sides** ([chart](docs/hidden_quality.png)). The model can't see everything that makes a home valuable (view, condition, finishes). Each agent's score miss tracks that hidden value almost perfectly (correlation 0.96 seller, -0.98 buyer), and good agents get homes with more of it (correlation +0.3 to +0.4 with true skill). It flatters good sellers, which props up the seller ranking, and makes good buyer agents look like they overpaid. Fix: better condition data, not a fancier model.
-2. **Buyer and offer scores are context only.** Both have weight 0 in `config/scoring.json`, so the coaching index is the seller score for now. Buyer: rank agreement 0.17; it needs an independent value estimate of each home (about 4% typical miss or better), which the data doesn't have. Offers: the fair offer score works well (0.89) but its ranges are slightly too narrow (87% to 88% caught, rule 90%), so it waits for one more test.
+2. **Buyer and offer scores are context only.** Both have weight 0 in `config/scoring.json`, so the coaching index is the seller score for now. Buyer: rank agreement 0.17; it needs an independent value estimate of each home (about 4% typical miss or better), which the data doesn't have. Offers: the fair offer score works well (0.89), but even with calibrated wider ranges it missed the pre-set rule on fresh fake worlds in one of three kinds of world (coverage 89.7%, lean 0.165). The side test says the fault is in the fake offers, not the score; it gets weight only after it passes on better fake offers.
 3. **Hidden home value is not mainly "condition".** Phase 4 said better condition data would fix it. It doesn't: a perfect condition rating adds almost nothing. What's missing is what changed since the last sale and a price model with the right shape. Only an independent value estimate fixed it in testing.
 4. **The bias allowance is an assumption.** Ranges get extra room for about 0.8 points of bias (one standard deviation). That brings agents with 50+ deals from 85% to 93% caught (seller) and 74% to 97% (buyer), at the cost of fewer clear calls. It was sized on fake data. If real bias is bigger, ranges are still too narrow, and the no-answer-key check can't tell.
 5. **Agents with under 5 deals get no real feedback.** The bootstrap range catches the truth only 86% (seller) and 57% (buyer) of the time for them, so the table uses the wider of two ranges plus the allowance. None of the 14 agents with 1 to 4 listings is called clearly different from average. New agents get a "first look" flag, not a score.
 6. **When more parts are turned back on, the index assumes their errors are independent.** Measured for seller and offer scores: they are not linked (correlation 0.00 to 0.04). Seller and buyer scores come from the same regression and the same homes, so theirs probably are. Not measured yet.
-7. **Fake losing offers are drawn to fit the real winner.** That keeps every sale unchanged, but it is not exactly how a real contest works, and it is the likely reason the fair offer score leans slightly toward clients who pay less. Real offer data is the real test.
+7. **Fake losing offers are drawn to fit the real winner.** That keeps every sale unchanged, but it is not how a real contest works. Tested Oct 28: it causes both the offer score's lean toward clients who pay less and its too-narrow ranges (full contests: lean 0.00 to 0.01, ranges 94% to 96%). Until the standard fake offers are rebuilt as full contests, the offer score's lean and range coverage look worse than they should, while its win-skill agreement looks a little better (0.89 vs 0.84 to 0.87). Real offer data is the real test.
 8. **The fake world was built by the same people who built the model.** Skill never changes, no teams share credit, no dual agency. Passing these tests is necessary, not sufficient.
+
+**Phase 5 follow-up (Oct 28):** offer score ranges calibrated (allowance 0.1% of price) and confirmed on fresh worlds; the lean traced to the fake losing offers. Weights unchanged.
 
 **Fixed in Phase 5:** offers depend on price and terms, raw win rate replaced by the fair offer score, the offer extractor, and the correction above about condition data.
 

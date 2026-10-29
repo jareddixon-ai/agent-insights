@@ -5,10 +5,15 @@
     "buyer": 0.0,
     "offer_win": 0.0
   },
-  "_weights_note": "Phase 5: still seller only. Buyer score: needs an independent value estimate of the home (about 4% typical miss or better, made before and without the sale price); a 1-5 condition rating, even a perfect one, barely helps (src/condition_test.py). Offer score: since Phase 5 this is the fair offer score (same home, same price and terms), not the raw win rate. It ranks agents well (0.89) and 98% of its clear calls are right, but it missed the rule set before testing: its 95% ranges catch the truth 87-88% of the time (rule: 90%) and it leans slightly toward agents whose clients pay less (0.16 in one kind of world, rule: 0.15). Next test: widen its ranges using these worlds, confirm on new ones (src/offer_validate.py). Phase 3 weights were seller 0.5, buyer 0.3, offer_win 0.2. Turn a part back on only after validation shows it works on the data you have.",
+  "_weights_note": "Phase 5 follow-up (Oct 28): still seller only. Buyer score: needs an independent value estimate of the home (about 4% typical miss or better, made before and without the sale price); a 1-5 condition rating, even a perfect one, barely helps (src/condition_test.py). Offer score (fair: same home, same price and terms) ranks agents well (0.89) and 98-99% of its clear calls are right. Its ranges were widened (offer_range below, calibrated on seeds 42-46), but on fresh seeds 47-51 it still missed the rule set before testing in the world where good agents get cheaper homes: lean toward agents whose clients pay less 0.165 (rule: within 0.15) and coverage 89.7% (rule: 90%). src/offer_lean_test.py shows how much of that lean comes from how the fake losing offers are made. Phase 3 weights were seller 0.5, buyer 0.3, offer_win 0.2. Turn a part back on only after validation shows it works on the data you have.",
   "_range_options": "Which 95% range decides 'clearly above/below average': formula (2C), bootstrap (3-3), or wider (whichever is wider, so we never overclaim).",
   "range": "wider",
   "bias_allowance": 0.008,
   "_bias_allowance": "Extra room for bias the ranges can't see (hidden home quality). 0.008 means we assume up to about 0.8 percentage points of bias (one standard deviation), so seller and buyer ranges are always at least about 1.6 points either side. Sized on fake data so agents with 50+ deals are caught about 95% of the time. On real data this is an assumption, not a measurement.",
-  "small_sample": 5
+  "small_sample": 5,
+  "offer_range": {
+    "form": "allowance",
+    "value": 0.1
+  },
+  "_offer_range": "Widening of the offer score's 95% ranges (src/offer_calibrate.py). allowance 0.1 = room for about 0.1% of price of bias the model's own error can't see, added like an independent error. Chosen on seeds 42-46 as the smallest setting reaching 90% coverage in every kind of world (narrower than the other option, multiplying the error by 1.1). Misses were mostly agents with 80+ offers, a sign of a small steady bias rather than noise."
 }

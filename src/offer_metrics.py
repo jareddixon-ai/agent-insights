@@ -111,9 +111,25 @@ def win_chance(a, others=2):
     return np.exp(a) / (np.exp(a) + others) - 1 / (others + 1)
 
 
-def fair_offer_scores(offers, penalty=None):
+def offer_range_setting():
+    """How much to widen the offer score's 95% ranges (calibrated in offer_calibrate.py)."""
+    import json
+    from score_agents import CONFIG
+    return json.loads(CONFIG.read_text()).get("offer_range", {"form": "multiplier", "value": 1.0})
+
+
+def widened_se(se, per_pct, setting):
+    """Standard error after widening. 'multiplier' scales it; 'allowance' adds room (in % of
+    price) like two independent errors, so thin records grow a little and busy ones a lot."""
+    if setting["form"] == "multiplier":
+        return setting["value"] * se
+    return np.sqrt(se ** 2 + (setting["value"] * per_pct) ** 2)
+
+
+def fair_offer_scores(offers, penalty=None, widen=None):
     """One row per buyer agent: fair offer score with a 95% range (win-chance points in a
-    3-offer contest), offers in contests, and the fitted value of each term."""
+    3-offer contest), offers in contests, and the fitted value of each term.
+    effect_se is the model's own standard error; the low/high range uses the widened one."""
     d = contest_data(offers)
     if penalty is None:
         penalty, _ = pick_penalty(d)
@@ -129,8 +145,10 @@ def fair_offer_scores(offers, penalty=None):
     n_offers = pd.Series(d["agent_ids"]).value_counts()
     table = pd.DataFrame({"effect": a, "effect_se": se}, index=pd.Index(d["agents"], name="agent_id"))
     table["score"] = win_chance(table["effect"])
-    table["low"] = win_chance(table["effect"] - Z95 * table["effect_se"])
-    table["high"] = win_chance(table["effect"] + Z95 * table["effect_se"])
+    setting = offer_range_setting() if widen is None else widen
+    range_se = widened_se(table["effect_se"], theta[0], setting)   # theta[0]: model weight of 1% more price
+    table["low"] = win_chance(table["effect"] - Z95 * range_se)
+    table["high"] = win_chance(table["effect"] + Z95 * range_se)
     table["offers"] = n_offers.reindex(table.index).fillna(0).astype(int)
     terms = pd.Series(theta[:k], index=TERMS)
     table.attrs.update(penalty=penalty, terms=terms)

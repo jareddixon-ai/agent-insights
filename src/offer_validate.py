@@ -9,6 +9,8 @@ Rule for giving the offer score weight, set BEFORE looking at results:
     rank agreement with buyer savings (overpaying)  between -0.15 and 0.15 (it must not reward overpaying)
     95% ranges catch the truth                      at least 90% of the time
     "clearly above/below average" calls right       at least 90%
+Since the Phase 5 follow-up, ranges use the widening calibrated in offer_calibrate.py, and
+seeds 42-46 are the calibration worlds; the fresh-world confirmation (seeds 47-51) lives there.
 The buyer score stays at weight 0: step 5-0 showed it needs an independent value estimate
 (about 4% typical miss or better), which this data doesn't have.
 
@@ -59,7 +61,7 @@ def one_world(seed, strength):
     fair = om.fair_offer_scores(offers)
     per_pct = fair.attrs["terms"]["price_pct"]          # model weight of 1% more price
     est = fair["effect"] / per_pct                       # agent effect in "% of price" terms
-    half = om.Z95 * fair["effect_se"] / per_pct
+    half = om.Z95 * om.widened_se(fair["effect_se"], per_pct, om.offer_range_setting()) / per_pct   # calibrated widening
     truth = 100 * gen.WIN_SKILL_VALUE * (sk["win_skill"] - sk["win_skill"].reindex(fair.index).mean())
     truth = truth.reindex(fair.index)
     clear = (est - half > 0) | (est + half < 0)
