@@ -129,3 +129,33 @@ Charts from `src/validate.py` are committed in `docs/`: `validation.png`, `accur
 - `trends.csv` (6-0, `src/trends.py`): one row per agent and period. `kind` (year or half), `period` ("2025" or "2025 H1"), `score` (seller score vs the average agent in that period, shrunk), `low` / `high` (95% range incl. the bias allowance), `deals` (listings sold in the period), `small_sample` (under `small_sample` listings, 5 by default).
 - `speed_pricing.csv` and `rankings.csv` (since 6): every context number has a 95% range. `speed_low` / `speed_high`, `list_vs_value_low` / `list_vs_value_high` (about 1.25 x spread / sqrt(listings), spread = how far one agent's listings sit from their own median), `cut_low` / `cut_high` (Wilson interval for a share).
 - `config/scoring.json` (since 6): a `validation` block says which parts passed testing, with one sentence on why. The dashboard shows that sentence as a warning when a leader turns on a part that failed.
+
+## Private copy (Phase 7)
+
+A brokerage maps its own export to these columns in `config/column_mapping.json` (our name on the left, their header on the right, `null` if they don't have it). `src/readiness_check.py` says what is there and what is missing; `src/run_private.py` scores it.
+
+| Group | Our columns | If missing |
+|---|---|---|
+| Sales, required | listing_id, zip, beds, baths, sqft, lot_sqft, year_built, assessed_value, list_date, sold_date, sold_price, listing_agent_id, buyer_agent_id | Can't score. The model needs these to estimate what each home was worth |
+| Sales, sale history | prior_sale_date, prior_sale_price | Scores run, but agents who list long-held homes look better than they are (fake data: rank agreement 0.74 to 0.60) |
+| Sales, context | original_list_price, num_price_changes, days_on_market | No speed or pricing context, no offers attracted |
+| Sales, optional | value_estimate, condition_rating | Without an independent value estimate, buyer scores stay context only |
+| Agents | agent_id, office, team, years_licensed | No roster: office shows as "Unknown", no team filter |
+| Offers | listing_id, buyer_agent_id, offer_price, outcome, financing, down_payment_pct, inspection_contingency, appraisal_contingency, loan_contingency, days_to_close | No offer score and no offers attracted (all ten are needed: a fair comparison needs price and every term) |
+
+`values` in the mapping says how the export spells `outcome` (won, lost) and `financing` (cash, loan).
+
+Rules the check applies:
+- A mapped column that is over half blank counts as missing. Rows with a blank in a required column, or in a sale-history or value-estimate column the model uses, are dropped and counted.
+- Agent IDs must be codes: IDs with a space or an @ (likely names or emails) block scoring.
+- A value estimate whose median miss against the sale price is under 1.5% gets a leak warning: it was probably made with the price in hand, like a loan appraisal.
+- Under 200 usable sales blocks scoring.
+
+**What a private copy stores** (`<data_folder>/standard/`): only the columns above, in our names. `scored/` holds `rankings.csv`, `trends.csv`, `predictions.csv`, `bootstrap_scores.csv`, `speed_pricing.csv`, `offer_scores.csv`, same layout as `data/fake/`.
+
+**What it never reads or stores:** any column not in the mapping. That includes addresses (`address` is not part of private mode), client names, emails, phones, notes and remarks. The check counts unmapped columns whose header looks personal, without printing their names or values.
+
+**Demo:** `src/make_fake_export.py` writes `data/fake/export/` ("Closed Sales Export.csv", "Agent Roster.csv"): renamed columns, prices as text, US-style dates, duplicates, unsold rows, no sale history, no years licensed, no offers, and made-up addresses, names, emails, phones and remarks. `config/column_mapping_demo.json` maps it.
+
+### Phase 7 settings
+- `config/scoring.json` `min_peers` (10): the report card shows the anonymous peer chart only when at least this many other agents have that score. The app never goes below 10.

@@ -18,7 +18,8 @@ def clean_sales(raw):
     df["zip"] = df["zip"].astype(str).str.strip()
     df["listing_agent_id"] = df["listing_agent_id"].astype(str).str.strip().str.upper()
     df["buyer_agent_id"] = df["buyer_agent_id"].fillna("").astype(str).str.strip().str.upper()
-    df["office"] = df["office"].astype(str).str.strip().str.title()
+    if "office" in df:   # private exports may keep office only in the agents file
+        df["office"] = df["office"].astype(str).str.strip().str.title()
     for col in ["list_date", "sold_date"]:
         df[col] = pd.to_datetime(df[col], errors="coerce")
 
@@ -40,7 +41,7 @@ def clean_sales(raw):
         filled[col] = int(df[col].isna().sum())
         df[col] = df[col].fillna(df.groupby("zip")[col].transform("median"))
     filled["assessed_value"] = int(df["assessed_value"].isna().sum())
-    if "prior_sale_price" in df:
+    if "prior_sale_price" in df and "prior_sale_date" in df:
         # California (Prop 13): assessed value = last sale price, grown at most 2% a year.
         days = (df["list_date"] - pd.to_datetime(df["prior_sale_date"], errors="coerce")).dt.days
         years = np.floor(days / 365.25)   # whole years of 2% growth

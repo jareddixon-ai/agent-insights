@@ -2,10 +2,11 @@
 Reads data/fake/rankings.csv (src/score_agents.py) and data/fake/trends.csv (src/trends.py). Fake data only.
 
 Two views:
-  Leader view   : office and team filters, weight sliders, everyone with ranges, one agent's trend.
-  Report card   : one agent against anonymous peers, 2 or 3 coaching points, context.
+  Leader view   : office and team filters, everyone with ranges, one agent's trend. Tested weights by
+                  default; weight sliders only behind an "Explore" toggle.
+  Report card   : one agent against anonymous peers (shown only with 10+ peers), 2 or 3 coaching points.
 
-A private copy can point at its own folder by setting AGENT_INSIGHTS_DATA (for example data/private).
+A private copy points at its own scored folder with AGENT_INSIGHTS_DATA (src/run_private.py prints the command).
 """
 
 import json
@@ -120,6 +121,7 @@ if not (DATA / "rankings.csv").exists():
     st.stop()
 
 cfg = load_config()
+MIN_PEERS = max(int(cfg.get("min_peers", 10)), 10)   # never fewer than 10, whatever the config says
 full, trends = load(str(DATA))
 ids = sorted(full.index)
 asked = st.query_params.get("agent")   # ?agent=A133 opens that agent's card directly
@@ -134,12 +136,21 @@ with leader:
     pick_offices = f1.multiselect("Office", offices, default=offices, key="office")
     pick_teams = f2.multiselect("Team", teams, default=teams, key="team")
 
-    st.markdown("**How much each part counts in the coaching index** (the index blends the parts; "
-                "defaults are the tested settings)")
-    w_cols = st.columns(3)
-    weights = {name: w_cols[i].slider(PARTS[name][0], 0.0, 1.0, float(cfg["weights"].get(name, 0)), 0.1,
-                                      key=f"w_{name}")
-               for i, name in enumerate(PARTS)}
+    # Guard rail (Phase 7): the tested weights are the default view. Sliders appear only after a
+    # leader turns on "explore", so nobody ranks people on an untested part by accident.
+    tested = {name: float(cfg["weights"].get(name, 0)) for name in PARTS}
+    explore = st.toggle("Explore other weights (not tested)", value=False, key="explore")
+    if explore:
+        st.markdown("**How much each part counts in the coaching index** (the index blends the parts; "
+                    "defaults are the tested settings)")
+        st.caption("**Exploring.** Numbers shown with other weights are for discussion, not for decisions "
+                   "about people. The report card always keeps the tested settings. Turn exploring off to go back.")
+        w_cols = st.columns(3)
+        weights = {name: w_cols[i].slider(PARTS[name][0], 0.0, 1.0, tested[name], 0.1, key=f"w_{name}")
+                   for i, name in enumerate(PARTS)}
+    else:
+        weights = tested
+        st.caption("Coaching index uses the tested settings. Turn on 'Explore' to try other weights.")
     for name, w in weights.items():
         status = cfg.get("validation", {}).get(name, {})
         if w > 0 and not status.get("passed", False):
@@ -242,6 +253,11 @@ with card:
         unit = ("offer" if name == "offer_win" else "deal") + ("" if n == 1 else "s")
         col.caption(f"{meaning} **{row[f'{name}_group']}** ({n} {unit}).")
         peers = full.drop(index=agent)[f"{name}_score"].dropna() * 100    # values only: no names, no ids
+        if len(peers) < MIN_PEERS:
+            # A distribution of a handful of values can point to individuals (Phase 7 guard rail).
+            col.caption(f"Peer comparison hidden: fewer than {MIN_PEERS} other agents have this score, so a "
+                        "chart could point to individuals.")
+            continue
         dots = pd.DataFrame({"score": peers.to_numpy(), "who": "Peers (anonymous)"})
         you = pd.DataFrame({"score": [row[f"{name}_score"] * 100], "low": [row[f"{name}_low"] * 100],
                             "high": [row[f"{name}_high"] * 100], "who": ["This agent"]})

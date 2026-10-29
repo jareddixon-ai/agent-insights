@@ -11,6 +11,8 @@
   "bias_allowance": 0.008,
   "_bias_allowance": "Extra room for bias the ranges can't see (hidden home quality). 0.008 means we assume up to about 0.8 percentage points of bias (one standard deviation), so seller and buyer ranges are always at least about 1.6 points either side. Sized on fake data so agents with 50+ deals are caught about 95% of the time. On real data this is an assumption, not a measurement.",
   "small_sample": 5,
+  "min_peers": 10,
+  "_min_peers": "The report card shows the anonymous peer chart only when at least this many other agents have that score (the app never goes below 10). A spread of 3 or 4 values on a small team can point to individuals.",
   "offer_range": {
     "form": "allowance",
     "value": 0.1

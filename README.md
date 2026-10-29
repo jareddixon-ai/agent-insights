@@ -12,7 +12,7 @@ Results are framed as coaching, not rankings: every score is a percent versus th
 4. **Shrinkage** (`src/shrinkage.py`): pulls thin records toward average and adds 95% ranges. How much agents really differ is measured the way meta-analysis combines studies (busy agents count more).
 5. **Offer win rates** (`src/offer_win_rates.py`): wins / offers made, shrunk the same way. Kept to show the trap: it rewards clients who pay more (see 17).
 6. **Messy data** (`src/make_messy_data.py`, `src/clean_data.py`): a dirty export and the cleaner that handles it.
-7. **Coaching dashboard** (`app/coaching_app.py`): Streamlit app read from `rankings.csv` and `trends.csv`. Leader view (office and team filters, weight sliders, everyone with ranges, trends) and an agent report card (anonymous peers, 2 or 3 coaching points). See "How to read the dashboard" below.
+7. **Coaching dashboard** (`app/coaching_app.py`): Streamlit app read from `rankings.csv` and `trends.csv`. Leader view (office and team filters, tested weights with sliders behind an Explore toggle, everyone with ranges, trends) and an agent report card (anonymous peers when there are 10 or more, 2 or 3 coaching points). See "How to read the dashboard" below.
 8. **Stress test** (`src/stress_test.py`): rebuilds the fake data with selection bias flipped (better agents get cheaper homes).
 9. **Price model** (`src/price_model.py`): home-only price, cross-validated (every home predicted by a model that never saw it).
 10. **Speed and pricing** (`src/speed_and_pricing.py`): days on market vs similar homes, and list price vs model value. Context only, because the agent controls list price.
@@ -28,6 +28,7 @@ Results are framed as coaching, not rankings: every score is a percent versus th
 20. **Offer score follow-up** (`src/offer_calibrate.py`, `src/offer_lean_test.py`): widens the offer score's ranges on one set of fake worlds and confirms on fresh ones; then tests whether its lean comes from how the fake losing offers are made.
 21. **Trends** (`src/trends.py`): each agent's seller score by year and by half-year, with ranges and small-sample flags.
 22. **Coaching points** (`src/coaching_points.py`): turns one agent's row into 2 or 3 one-sentence points, with rules on when a strength or focus area may be named.
+23. **Private copy** (`config/column_mapping.json`, `src/readiness_check.py`, `src/run_private.py`): a brokerage points its own column names at ours, gets a plain-English readiness report, and scores its own data with no code edits. `src/make_fake_export.py` makes a messy fake export to try it on. See "Private copy" below.
 
 ## Run it
 
@@ -44,10 +45,15 @@ python validate.py && python sale_history_test.py && python condition_test.py   
 python make_offer_pdfs.py && python extract_offers.py   # 100 fake offer PDFs, about 30 seconds
 python offer_validate.py                                # 15 fake worlds, about 7 minutes
 python offer_calibrate.py && python offer_lean_test.py  # 45 fake worlds, about 25 minutes (cached after the first run)
+python make_fake_export.py                              # messy fake "brokerage export" for private-copy mode
 cd ..
+python src/readiness_check.py --mapping config/column_mapping_demo.json   # what's there, what's missing
+python src/run_private.py --mapping config/column_mapping_demo.json --resamples 200   # about 1 minute
 streamlit run app/coaching_app.py
-pytest                                   # automated tests
+pytest                                   # automated tests, about 2 minutes
 ```
+
+To open the dashboard on the private-copy demo instead of the main fake data, use the command `run_private.py` prints at the end (it sets `AGENT_INSIGHTS_DATA` to the scored folder).
 
 ## How to read the dashboard
 
@@ -57,7 +63,7 @@ Run `streamlit run app/coaching_app.py` after the pipeline. Everything below is 
 
 **Leader view** (for an office or brokerage leader)
 - **Filters** pick offices and teams. They only choose who is shown: every score still compares the agent with the average agent at the whole brokerage.
-- **Weight sliders** set how much each part counts in the coaching index (a blend of the parts, where +1 = about one typical step better than the average agent). Defaults come from `config/scoring.json`: seller only. Turning on the buyer or offer score shows a warning with one sentence on why that part failed validation. You can still look; you just can't say it was tested.
+- **Tested weights by default.** The coaching index (a blend of the parts, where +1 = about one typical step better than the average agent) uses the tested weights from `config/scoring.json`: seller only. Weight sliders appear only after a leader turns on **Explore other weights (not tested)**. Turning on the buyer or offer score then shows a warning with one sentence on why that part failed validation. Turning Explore off puts the tested weights back. We chose a toggle over logging slider moves because a safe default prevents the mistake, while a log only records it afterward.
 - **Every number has a 95% range** (where the true value very likely sits). If the range includes 0, the agent is **"not clearly different from average"**. That is the most common answer (135 of 150 agents here), and it is honest, not a failure.
 - **Seller score over time** shows each year or half-year, compared with the average agent in that same period. Hollow dots have under 5 listings: read them as noise. By half-year, the typical agent has 3 listings per period, so most swings are luck, not change.
 
@@ -65,7 +71,7 @@ Run `streamlit run app/coaching_app.py` after the pipeline. Everything below is 
 
 **Agent report card** (for a coaching conversation with one agent)
 - Always uses the tested settings, whatever the leader's sliders say.
-- Other agents appear only as grey ticks with no names.
+- Other agents appear only as grey ticks with no names, and only when at least 10 other agents have that score. With fewer, the chart is hidden: 3 or 4 ticks on a small team can point to individuals. (`min_peers` in `config/scoring.json`; the app never goes below 10.)
 - **Coaching points:** a "Strength" or "Focus area" is named only when the whole range is on one side of 0, and only for a part that passed validation. Context-only numbers (buyer score, offer score, speed, list price vs value, offers attracted) are worded "Worth a look", never as a verdict. If nothing is clear, it says so.
 - **Offer score:** at the same price and terms on the same home, how much more or less often this agent's offers win, in percentage points of win chance in a typical 3-offer contest. **Offers attracted:** how many more or fewer offers this agent's listings drew than similar listings with a similar list price.
 
@@ -153,8 +159,11 @@ Average sold price looks smart only when good agents happen to get pricier homes
 5. **Agents with under 5 deals get no real feedback.** The bootstrap range catches the truth only 86% (seller) and 57% (buyer) of the time for them, so the table uses the wider of two ranges plus the allowance. None of the 14 agents with 1 to 4 listings is called clearly different from average. New agents get a "first look" flag, not a score.
 6. **When more parts are turned back on, the index assumes their errors are independent.** Measured for seller and offer scores: they are not linked (correlation 0.00 to 0.04). Seller and buyer scores come from the same regression and the same homes, so theirs probably are. Not measured yet.
 7. **Fake losing offers are drawn to fit the real winner.** That keeps every sale unchanged, but it is not how a real contest works. Tested Oct 28: it causes both the offer score's lean toward clients who pay less and its too-narrow ranges (full contests: lean 0.00 to 0.01, ranges 94% to 96%). Until the standard fake offers are rebuilt as full contests, the offer score's lean and range coverage look worse than they should, while its win-skill agreement looks a little better (0.89 vs 0.84 to 0.87). Real offer data is the real test.
-8. **Weight sliders can turn on untested parts.** The app warns, but a leader can still rank people on a score that failed validation. The report card ignores the sliders for that reason. Trends by half-year are mostly small samples (59% of agent-periods have under 5 listings).
+8. **Weight sliders can still turn on untested parts.** Since Phase 7 they sit behind an "Explore" toggle and the tested weights are the default, but a leader who turns Explore on can rank people on a score that failed validation. The app warns; the report card ignores the sliders. Trends by half-year are mostly small samples (59% of agent-periods have under 5 listings).
 9. **The fake world was built by the same people who built the model.** Skill never changes, no teams share credit, no dual agency. Passing these tests is necessary, not sufficient.
+10. **Private copies have no answer key.** A brokerage can't grade its own scores against true skill. The split-half check in `validate.py` helps on the seller side and is fooled on the buyer side. The readiness check says what data is missing; it can't say the scores are right.
+
+**Added in Phase 7:** tested weights as the default view (sliders behind Explore), a 10-peer minimum for anonymous peer charts, the ethics section, and private-copy mode with a readiness check.
 
 **Phase 5 follow-up (Oct 28):** offer score ranges calibrated (allowance 0.1% of price) and confirmed on fresh worlds; the lean traced to the fake losing offers. Weights unchanged.
 
@@ -168,6 +177,38 @@ A skeptical statistics review of the whole method, with what has been fixed sinc
 
 Selection bias, small samples, market timing, list-price games, hidden home quality, California tax values, target leakage (including "helpful" data that already contains the answer), and win rates that reward overpaying. See `docs/data_dictionary.md`.
 
-## Privacy
+## Ethics
 
-Never put real client, MLS or brokerage data in this repo. Private runs belong in `data/private/` (git-ignored). Offer PDFs hold buyers' names and contact details: run them through `src/extract_offers.py`, which stores only the numbers the metrics use.
+agent-insights scores people, with noisy numbers, for a business that pays them. That needs rules, not just good intentions.
+
+**What it is for.** Coaching conversations: an agent and a leader looking at the same card, asking "what is working, and what is worth a look?" Every number is meant to start a conversation, not end one.
+
+**What it is not for.** It is not for firing, pay, bonuses, or ranking people on one number. The coaching index is a blend with a range, and most agents (135 of 150 in the fake data) are "not clearly different from average". Ranking those 135 against each other is ranking luck. A leader who wants to act on a score should look at the range first: if it includes 0, there is nothing to act on.
+
+**The honest limits, in plain words.**
+- **Ranges measure luck, not bias.** A 95% range says how much the score could move by chance. It can't see a steady bias, like good agents getting nicer homes than the data shows. We add a bias allowance, but its size is an assumption.
+- **Buyer and offer scores failed testing.** The buyer score needs an independent value estimate of each home that the data doesn't have. The offer score missed its pre-set rule narrowly. Both are shown as "context only" and never called clearly above or below.
+- **The weight sliders can turn on untested parts.** They sit behind an "Explore" toggle and come with a warning, but they still work. The agent's own card always uses the tested settings.
+- **Small samples and half-year trends are mostly noise.** An agent with under 5 deals gets a first look, not a score. By half-year, the typical agent has 3 listings per period; a dip after a great half is usually luck evening out (regression to the mean), not a slump.
+- **Without the last sale date and price, California data misleads.** Agents who list long-held homes look better than they are. The readiness check says so when it's missing.
+
+**Privacy.**
+- The public repo holds fake data only. Never put real client, MLS or brokerage data in it.
+- A private copy reads only the columns named in its mapping, and stores only what the metrics use (listed in `docs/data_dictionary.md`, "Private copy"). It never reads or stores addresses, client names, emails, phones, notes or any column you didn't map. Offer PDFs go through `src/extract_offers.py`, which keeps the numbers and drops names and free text.
+- The readiness check refuses to run if the data folder is inside the repo and not git-ignored, and it prints counts only, never a value from your files.
+- Agent IDs must be codes, not names (the check blocks IDs that look like names or emails). Leaders see IDs; peers on a card are anonymous ticks, shown only with 10 or more peers.
+- **Agents should see their own card before a manager uses it**, and be able to say what the data missed (a hard estate sale, a family friend's listing). A score the agent has never seen should not be in a performance conversation.
+
+## Private copy
+
+How a brokerage runs agent-insights on its own data, without editing code.
+
+1. **Put your export in `data/private/`** (git-ignored). Any folder outside the repo also works. Sales are required; an agent roster and offers are optional.
+2. **Map your columns** in `config/column_mapping.json`: our name on the left, your exact header on the right, `null` for anything you don't have. Columns you don't list are never read. `config/column_mapping_demo.json` shows a filled-in example for the fake export.
+3. **Run the readiness check:** `python src/readiness_check.py`. It reads your files and says in plain sentences what is there, what is missing, and what that turns off. For example: no independent value estimate means buyer scores stay context only; no offer data means no offer score; a median of under 5 listings per agent means almost everyone will be "not clearly different from average". It also catches leaky data, like a value estimate that sits suspiciously close to the sale price (a loan appraisal made with the price in hand).
+4. **Score:** `python src/run_private.py`. It stores the cleaned columns it uses in `data/private/standard/`, writes scores to `data/private/scored/`, and prints the command to open the dashboard on them.
+5. **Show each agent their card first.** Then use it in coaching.
+
+On the messy fake export (renamed columns, prices typed as text, duplicates, unsold rows, no sale history, no offers, plus fake names, emails, phones, addresses and notes that are never read): 4,800 of 5,050 rows usable, no personal detail printed or stored, and seller rank agreement with true skill 0.62. The clean fake data with that one column removed gives 0.60, and with it 0.74: the missing column costs far more than all the mess.
+
+Weights and the `validation` block in `config/scoring.json` stay as tested on fake data. A private copy should change them only after running its own validation, never to silence a warning.

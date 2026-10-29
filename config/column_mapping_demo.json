@@ -1,0 +1,65 @@
+{
+  "_about": "Example mapping for the messy FAKE export made by src/make_fake_export.py. It shows how a brokerage points its own column names at ours. This export has no last sale, no years licensed and no offers, so those are null or point at files that don't exist.",
+  "data_folder": "data/fake/export",
+  "_data_folder": "Where your export files live. Relative paths start at the repo folder. If it is inside the repo it MUST be git-ignored (data/private/ is), or the readiness check refuses to run.",
+  "sales": {
+    "file": "Closed Sales Export.csv",
+    "columns": {
+      "listing_id": "MLS Number",
+      "zip": "Zip Code",
+      "beds": "Bedrooms",
+      "baths": "Bathrooms Total",
+      "sqft": "Living Area SqFt",
+      "lot_sqft": "Lot Size SqFt",
+      "year_built": "Year Built",
+      "assessed_value": "Tax Assessed Value",
+      "list_date": "Listing Contract Date",
+      "sold_date": "Close Date",
+      "sold_price": "Close Price",
+      "listing_agent_id": "List Agent Code",
+      "buyer_agent_id": "Buyer Agent Code",
+      "prior_sale_date": null,
+      "prior_sale_price": null,
+      "original_list_price": "Original List Price",
+      "num_price_changes": "Price Change Count",
+      "days_on_market": "DOM",
+      "value_estimate": null,
+      "condition_rating": null
+    }
+  },
+  "agents": {
+    "file": "Agent Roster.csv",
+    "columns": {
+      "agent_id": "Agent Code",
+      "office": "Office Name",
+      "team": "Team Name",
+      "years_licensed": null
+    }
+  },
+  "offers": {
+    "file": "Offers.csv",
+    "columns": {
+      "listing_id": "listing_id",
+      "buyer_agent_id": "buyer_agent_id",
+      "offer_price": "offer_price",
+      "outcome": "outcome",
+      "financing": "financing",
+      "down_payment_pct": "down_payment_pct",
+      "inspection_contingency": "inspection_contingency",
+      "appraisal_contingency": "appraisal_contingency",
+      "loan_contingency": "loan_contingency",
+      "days_to_close": "days_to_close"
+    }
+  },
+  "values": {
+    "_about": "How your export spells two text columns. Left: your value (case and spaces ignored). Right: ours.",
+    "outcome": {
+      "won": "won",
+      "lost": "lost"
+    },
+    "financing": {
+      "cash": "cash",
+      "loan": "loan"
+    }
+  }
+}

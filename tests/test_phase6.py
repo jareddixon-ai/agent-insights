@@ -143,6 +143,7 @@ def test_office_and_team_filters(app, rankings):
 
 
 def test_weight_sliders_warn_on_failed_parts(app, cfg):
+    app.toggle(key="explore").set_value(True).run()                    # sliders live behind "Explore" (Phase 7)
     assert [s.value for s in [app.slider(key=f"w_{p}") for p in ["seller", "buyer", "offer_win"]]] == \
         [cfg["weights"]["seller"], cfg["weights"]["buyer"], cfg["weights"]["offer_win"]]
     assert len(app.warning) == 0                                       # tested settings: no warning

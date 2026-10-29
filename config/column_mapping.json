@@ -1,0 +1,59 @@
+{
+  "_about": "Private-copy mode (Phase 7). Tells agent-insights which column in YOUR export holds each thing it needs, so you never edit code. Left side: our name (see docs/data_dictionary.md). Right side: the exact column header in your file. Use null when your export doesn't have it. Columns you don't list are never read, so names, addresses, contact details and notes in your export stay out. This copy is filled in for the public fake data, so every right side equals our name.",
+  "data_folder": "data/private",
+  "_data_folder": "Where your export files live. Relative paths start at the repo folder. If it is inside the repo it MUST be git-ignored (data/private/ is), or the readiness check refuses to run.",
+  "sales": {
+    "file": "sales.csv",
+    "columns": {
+      "listing_id": "listing_id",
+      "zip": "zip",
+      "beds": "beds",
+      "baths": "baths",
+      "sqft": "sqft",
+      "lot_sqft": "lot_sqft",
+      "year_built": "year_built",
+      "assessed_value": "assessed_value",
+      "list_date": "list_date",
+      "sold_date": "sold_date",
+      "sold_price": "sold_price",
+      "listing_agent_id": "listing_agent_id",
+      "buyer_agent_id": "buyer_agent_id",
+      "prior_sale_date": "prior_sale_date",
+      "prior_sale_price": "prior_sale_price",
+      "original_list_price": "original_list_price",
+      "num_price_changes": "num_price_changes",
+      "days_on_market": "days_on_market",
+      "value_estimate": null,
+      "condition_rating": null
+    }
+  },
+  "agents": {
+    "file": "agents.csv",
+    "columns": {
+      "agent_id": "agent_id",
+      "office": "office",
+      "team": "team",
+      "years_licensed": "years_licensed"
+    }
+  },
+  "offers": {
+    "file": "offers.csv",
+    "columns": {
+      "listing_id": "listing_id",
+      "buyer_agent_id": "buyer_agent_id",
+      "offer_price": "offer_price",
+      "outcome": "outcome",
+      "financing": "financing",
+      "down_payment_pct": "down_payment_pct",
+      "inspection_contingency": "inspection_contingency",
+      "appraisal_contingency": "appraisal_contingency",
+      "loan_contingency": "loan_contingency",
+      "days_to_close": "days_to_close"
+    }
+  },
+  "values": {
+    "_about": "How your export spells two text columns. Left: your value (case and spaces ignored). Right: ours.",
+    "outcome": {"won": "won", "lost": "lost"},
+    "financing": {"cash": "cash", "loan": "loan"}
+  }
+}
