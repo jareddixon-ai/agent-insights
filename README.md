@@ -12,7 +12,7 @@ Results are framed as coaching, not rankings: every score is a percent versus th
 4. **Shrinkage** (`src/shrinkage.py`): pulls thin records toward average and adds 95% ranges. How much agents really differ is measured the way meta-analysis combines studies (busy agents count more).
 5. **Offer win rates** (`src/offer_win_rates.py`): wins / offers made, shrunk the same way. Kept to show the trap: it rewards clients who pay more (see 17).
 6. **Messy data** (`src/make_messy_data.py`, `src/clean_data.py`): a dirty export and the cleaner that handles it.
-7. **Coaching app** (`app/coaching_app.py`): Streamlit view per agent, read from `rankings.csv`: coaching index, scores with ranges, context.
+7. **Coaching dashboard** (`app/coaching_app.py`): Streamlit app read from `rankings.csv` and `trends.csv`. Leader view (office and team filters, weight sliders, everyone with ranges, trends) and an agent report card (anonymous peers, 2 or 3 coaching points). See "How to read the dashboard" below.
 8. **Stress test** (`src/stress_test.py`): rebuilds the fake data with selection bias flipped (better agents get cheaper homes).
 9. **Price model** (`src/price_model.py`): home-only price, cross-validated (every home predicted by a model that never saw it).
 10. **Speed and pricing** (`src/speed_and_pricing.py`): days on market vs similar homes, and list price vs model value. Context only, because the agent controls list price.
@@ -26,6 +26,8 @@ Results are framed as coaching, not rankings: every score is a percent versus th
 18. **Offer PDFs and extractor** (`src/make_offer_pdfs.py`, `src/extract_offers.py`): fake offer PDFs with made-up buyers, and an extractor that keeps the numbers and stores no names, emails, phones or notes.
 19. **Offer validation** (`src/offer_validate.py`): grades the offer metrics against the answer key in 15 fake worlds and decides, by a rule set in advance, whether the offer score earns weight.
 20. **Offer score follow-up** (`src/offer_calibrate.py`, `src/offer_lean_test.py`): widens the offer score's ranges on one set of fake worlds and confirms on fresh ones; then tests whether its lean comes from how the fake losing offers are made.
+21. **Trends** (`src/trends.py`): each agent's seller score by year and by half-year, with ranges and small-sample flags.
+22. **Coaching points** (`src/coaching_points.py`): turns one agent's row into 2 or 3 one-sentence points, with rules on when a strength or focus area may be named.
 
 ## Run it
 
@@ -37,6 +39,7 @@ cd src
 python naive_ranking.py && python agent_model.py && python shrinkage.py && python offer_win_rates.py
 python stress_test.py && python price_model.py && python speed_and_pricing.py
 python bootstrap_ranges.py && python offer_metrics.py && python score_agents.py   # bootstrap 2-3 minutes
+python trends.py                                        # seller score by year and half-year, a few seconds
 python validate.py && python sale_history_test.py && python condition_test.py     # charts in docs/, about 1 minute
 python make_offer_pdfs.py && python extract_offers.py   # 100 fake offer PDFs, about 30 seconds
 python offer_validate.py                                # 15 fake worlds, about 7 minutes
@@ -45,6 +48,26 @@ cd ..
 streamlit run app/coaching_app.py
 pytest                                   # automated tests
 ```
+
+## How to read the dashboard
+
+Run `streamlit run app/coaching_app.py` after the pipeline. Everything below is fake data.
+
+![Leader view](docs/dashboard_leader.png)
+
+**Leader view** (for an office or brokerage leader)
+- **Filters** pick offices and teams. They only choose who is shown: every score still compares the agent with the average agent at the whole brokerage.
+- **Weight sliders** set how much each part counts in the coaching index (a blend of the parts, where +1 = about one typical step better than the average agent). Defaults come from `config/scoring.json`: seller only. Turning on the buyer or offer score shows a warning with one sentence on why that part failed validation. You can still look; you just can't say it was tested.
+- **Every number has a 95% range** (where the true value very likely sits). If the range includes 0, the agent is **"not clearly different from average"**. That is the most common answer (135 of 150 agents here), and it is honest, not a failure.
+- **Seller score over time** shows each year or half-year, compared with the average agent in that same period. Hollow dots have under 5 listings: read them as noise. By half-year, the typical agent has 3 listings per period, so most swings are luck, not change.
+
+![Agent report card](docs/dashboard_card.png)
+
+**Agent report card** (for a coaching conversation with one agent)
+- Always uses the tested settings, whatever the leader's sliders say.
+- Other agents appear only as grey ticks with no names.
+- **Coaching points:** a "Strength" or "Focus area" is named only when the whole range is on one side of 0, and only for a part that passed validation. Context-only numbers (buyer score, offer score, speed, list price vs value, offers attracted) are worded "Worth a look", never as a verdict. If nothing is clear, it says so.
+- **Offer score:** at the same price and terms on the same home, how much more or less often this agent's offers win, in percentage points of win chance in a typical 3-offer contest. **Offers attracted:** how many more or fewer offers this agent's listings drew than similar listings with a similar list price.
 
 ## What the fake data shows (graded against the hidden answer key)
 
@@ -130,7 +153,8 @@ Average sold price looks smart only when good agents happen to get pricier homes
 5. **Agents with under 5 deals get no real feedback.** The bootstrap range catches the truth only 86% (seller) and 57% (buyer) of the time for them, so the table uses the wider of two ranges plus the allowance. None of the 14 agents with 1 to 4 listings is called clearly different from average. New agents get a "first look" flag, not a score.
 6. **When more parts are turned back on, the index assumes their errors are independent.** Measured for seller and offer scores: they are not linked (correlation 0.00 to 0.04). Seller and buyer scores come from the same regression and the same homes, so theirs probably are. Not measured yet.
 7. **Fake losing offers are drawn to fit the real winner.** That keeps every sale unchanged, but it is not how a real contest works. Tested Oct 28: it causes both the offer score's lean toward clients who pay less and its too-narrow ranges (full contests: lean 0.00 to 0.01, ranges 94% to 96%). Until the standard fake offers are rebuilt as full contests, the offer score's lean and range coverage look worse than they should, while its win-skill agreement looks a little better (0.89 vs 0.84 to 0.87). Real offer data is the real test.
-8. **The fake world was built by the same people who built the model.** Skill never changes, no teams share credit, no dual agency. Passing these tests is necessary, not sufficient.
+8. **Weight sliders can turn on untested parts.** The app warns, but a leader can still rank people on a score that failed validation. The report card ignores the sliders for that reason. Trends by half-year are mostly small samples (59% of agent-periods have under 5 listings).
+9. **The fake world was built by the same people who built the model.** Skill never changes, no teams share credit, no dual agency. Passing these tests is necessary, not sufficient.
 
 **Phase 5 follow-up (Oct 28):** offer score ranges calibrated (allowance 0.1% of price) and confirmed on fresh worlds; the lean traced to the fake losing offers. Weights unchanged.
 

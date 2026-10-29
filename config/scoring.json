@@ -15,5 +15,11 @@
     "form": "allowance",
     "value": 0.1
   },
-  "_offer_range": "Widening of the offer score's 95% ranges (src/offer_calibrate.py). allowance 0.1 = room for about 0.1% of price of bias the model's own error can't see, added like an independent error. Chosen on seeds 42-46 as the smallest setting reaching 90% coverage in every kind of world (narrower than the other option, multiplying the error by 1.1). Misses were mostly agents with 80+ offers, a sign of a small steady bias rather than noise."
+  "_offer_range": "Widening of the offer score's 95% ranges (src/offer_calibrate.py). allowance 0.1 = room for about 0.1% of price of bias the model's own error can't see, added like an independent error. Chosen on seeds 42-46 as the smallest setting reaching 90% coverage in every kind of world (narrower than the other option, multiplying the error by 1.1). Misses were mostly agents with 80+ offers, a sign of a small steady bias rather than noise.",
+  "validation": {
+    "seller": {"passed": true, "why": "Passed testing: on fake data its order matches true skill well and every 'clearly above or below' call was right."},
+    "buyer": {"passed": false, "why": "Failed testing: without an independent value estimate of each home (like a pre-listing appraisal), the model can't tell a skilled buyer's agent from a client who simply bought a home worth less than it looked, so its order barely matches true skill."},
+    "offer_win": {"passed": false, "why": "Failed its pre-set test narrowly: where good agents get cheaper homes, its ranges caught the truth 89.7% of the time (the rule was 90%) and it leaned toward agents whose clients pay less, partly because of how the fake losing offers are made."}
+  },
+  "_validation": "Read by the dashboard (Phase 6). A leader can still move a failed part's weight above 0, but the app shows the 'why' sentence as a warning. A private copy should update this block after running its own validation, never by hand to silence a warning."
 }

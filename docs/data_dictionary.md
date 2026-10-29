@@ -124,3 +124,8 @@ Charts from `src/validate.py` are committed in `docs/`: `validation.png`, `accur
 - `rankings.csv` (since 5): `offer_win_*` is the fair offer score (was the raw win rate). New context columns `offers_attracted`, `offers_attracted_low`, `offers_attracted_high`.
 - `offer_validation.csv` (5-4): raw win rate vs competition-adjusted vs fair offer score graded against the answer key in 3 kinds of world, range coverage, offers attracted, seller/offer error link, and the coaching index with and without the offer score. Chart: `docs/offer_validation.png`.
 - `offer_pdfs/` (5-3): fake offer PDFs (made-up names, 555-01xx phone numbers, example.com emails). `offers_extracted.csv`: what the extractor read back, with no personal details.
+
+### Phase 6 outputs (dashboard)
+- `trends.csv` (6-0, `src/trends.py`): one row per agent and period. `kind` (year or half), `period` ("2025" or "2025 H1"), `score` (seller score vs the average agent in that period, shrunk), `low` / `high` (95% range incl. the bias allowance), `deals` (listings sold in the period), `small_sample` (under `small_sample` listings, 5 by default).
+- `speed_pricing.csv` and `rankings.csv` (since 6): every context number has a 95% range. `speed_low` / `speed_high`, `list_vs_value_low` / `list_vs_value_high` (about 1.25 x spread / sqrt(listings), spread = how far one agent's listings sit from their own median), `cut_low` / `cut_high` (Wilson interval for a share).
+- `config/scoring.json` (since 6): a `validation` block says which parts passed testing, with one sentence on why. The dashboard shows that sentence as a warning when a leader turns on a part that failed.

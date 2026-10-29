@@ -64,6 +64,38 @@ def group(low, high):
                     np.where(high < 0, "Clearly below average", "Not clearly different from average"))
 
 
+PARTS = ["seller", "buyer", "offer_win"]
+
+
+def apply_weights(table, weights):
+    """Blend the parts into the coaching index with the given weights, and label each part.
+
+    Each part is first divided by how much agents typically differ on it, so 1 point = one
+    typical step on any part. A part with weight 0 is labeled 'Context only' (never called
+    clearly above or below). The dashboard calls this again when a leader moves a weight slider.
+    Returns a copy; the input table needs {part}_score/_low/_high for every part."""
+    table = table.copy()
+    num, den, var = 0.0, 0.0, 0.0
+    for name in PARTS:
+        score, low, high = table[f"{name}_score"], table[f"{name}_low"], table[f"{name}_high"]
+        weight = weights.get(name, 0)
+        table[f"{name}_group"] = np.where(score.isna(), "No data",
+                                          group(low, high) if weight > 0 else "Context only")
+        spread = score.std()  # how much agents typically differ on this part
+        z, se = score / spread, (high - low) / (2 * Z95) / spread
+        w = weight * score.notna()
+        num = num + w * z.fillna(0)
+        den = den + w
+        var = var + (w**2) * se.fillna(0) ** 2   # assumes the parts' errors are independent (checked in 5-4)
+
+    table["coaching_index"] = num / den.replace(0, np.nan)
+    half = Z95 * np.sqrt(var) / den.replace(0, np.nan)
+    table["index_low"], table["index_high"] = table["coaching_index"] - half, table["coaching_index"] + half
+    table["index_group"] = np.where(table["coaching_index"].isna(), "No data",
+                                    group(table["index_low"], table["index_high"]))
+    return table
+
+
 def build_table(boot, offer, speed, agents, cfg):
     """offer: offer_scores.csv (fair offer score with range, and offers attracted)."""
     seller = boot.xs("seller", level="side")
@@ -83,31 +115,17 @@ def build_table(boot, offer, speed, agents, cfg):
     }
 
     table = agents.set_index("agent_id")[["office", "team", "years_licensed"]].copy()
-    num, den, var = 0.0, 0.0, 0.0
     for name, p in parts.items():
         p = p.reindex(table.index)
         table[f"{name}_score"], table[f"{name}_low"], table[f"{name}_high"] = p["score"], p["low"], p["high"]
         table[f"{name}_n"] = p["n"].fillna(0).astype(int)
-        scored = cfg["weights"].get(name, 0) > 0
-        table[f"{name}_group"] = np.where(p["score"].isna(), "No data",
-                                          group(p["low"], p["high"]) if scored else "Context only")
-        spread = p["score"].std()  # how much agents typically differ on this part
-        z, se = p["score"] / spread, (p["high"] - p["low"]) / (2 * Z95) / spread
-        w = cfg["weights"].get(name, 0) * p["score"].notna()
-        num = num + w * z.fillna(0)
-        den = den + w
-        var = var + (w**2) * se.fillna(0) ** 2   # assumes the parts' errors are independent (checked in 5-4)
-
-    table["coaching_index"] = num / den.replace(0, np.nan)
-    half = Z95 * np.sqrt(var) / den.replace(0, np.nan)
-    table["index_low"], table["index_high"] = table["coaching_index"] - half, table["coaching_index"] + half
-    table["index_group"] = np.where(table["coaching_index"].isna(), "No data",
-                                    group(table["index_low"], table["index_high"]))
+    table = apply_weights(table, cfg["weights"])
     total_deals = table["seller_n"] + table["buyer_n"]
     table["low_data_flag"] = total_deals < cfg["small_sample"]
 
-    # Descriptive context only (not in the index).
-    ctx = speed[["speed_vs_similar", "list_vs_value", "share_with_price_cut"]]
+    # Descriptive context only (not in the index), each with a 95% range (Phase 6).
+    ctx = speed[["speed_vs_similar", "speed_low", "speed_high", "list_vs_value", "list_vs_value_low",
+                 "list_vs_value_high", "share_with_price_cut", "cut_low", "cut_high"]]
     table = table.join(ctx)
     attract = offer.reindex(table.index)
     table["offers_attracted"] = attract["attract_fair_score"]   # vs similar listings at a similar list price

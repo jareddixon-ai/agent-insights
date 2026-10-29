@@ -21,6 +21,14 @@ from agent_model import DATA
 from shrinkage import shrink
 
 N_PRICE_BANDS = 5  # split homes into 5 equal-size price groups
+Z95 = 1.96
+
+
+def wilson(share, n):
+    """95% range for a share (Wilson score interval): works even with 1 listing or a share of 0."""
+    centre = (share + Z95**2 / (2 * n)) / (1 + Z95**2 / n)
+    half = Z95 * np.sqrt(share * (1 - share) / n + Z95**2 / (4 * n**2)) / (1 + Z95**2 / n)
+    return (centre - half).clip(0, 1), (centre + half).clip(0, 1)
 
 
 def similar_home_groups(sales, pred):
@@ -48,6 +56,13 @@ def speed_and_pricing(sales, pred):
             "share_with_price_cut": g["cut"].mean(),
         }
     )
+    # 95% ranges for the two pricing numbers (Phase 6: the dashboard shows a range for every number).
+    # Median: about 1.25 x spread / sqrt(listings), using the typical spread of one agent's listings
+    # around their own median. Share with a cut: Wilson interval, which stays sensible at 0 or 1 listing.
+    spread = (d["list_vs_value"] - g["list_vs_value"].transform("median")).std()
+    half = Z95 * 1.2533 * spread / np.sqrt(out["listings"])
+    out["list_vs_value_low"], out["list_vs_value_high"] = out["list_vs_value"] - half, out["list_vs_value"] + half
+    out["cut_low"], out["cut_high"] = wilson(out["share_with_price_cut"], out["listings"])
     # Speed is noisy for thin records, so shrink it toward typical, same as the scores.
     raw_speed = g["speed_log"].mean()
     sp = shrink(raw_speed, out["listings"], d["speed_log"].std())

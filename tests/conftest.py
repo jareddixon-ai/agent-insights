@@ -50,6 +50,8 @@ def scored_dir(tmp_path_factory, data_dir):
     agents = pd.read_csv(out / "agents.csv", keep_default_na=False)
     table = score_agents.build_table(boot, offer, speed, agents, score_agents.load_config())
     table.to_csv(out / "rankings.csv", index_label="agent_id")
+    import trends
+    trends.all_trends(sales, score_agents.load_config()).to_csv(out / "trends.csv", index=False)
     stress = pd.DataFrame({label: stress_test.run_one(42, strength, oracle)
                            for label, strength, oracle in stress_test.SCENARIOS}).T
     stress.to_csv(out / "stress_test.csv", index_label="scenario")
