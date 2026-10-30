@@ -32,6 +32,6 @@ Two numbers are pilot terms, not results: 60 days and $0. They are choices, set 
 
 Not used in the kit on purpose: the offer score's fresh-world coverage (89.7%) and lean (0.165). They matter for the decision to keep offers context only, but they need a paragraph of explanation that a one-pager can't carry. The kit says "offer score: context only, failed one pre-set test narrowly" instead.
 
-One number in the demo script comes from the demo snapshot, not the README: agent A133's seller score (about +7%, range +4.7% to +10.7%, 62 listings) in `demo/rankings.csv`. It is what the hosted demo shows on that agent's card.
+One number in the demo script comes from the demo snapshot, not the README: agent A133's seller score (+7.4%, range +4.7% to +10.7%, 62 listings) in `demo/rankings.csv`. It is what the hosted demo shows under "Seller side" on that agent's card (the big number at the top of the card is the coaching index, +3.70, a different scale).
 
 The pitch kit itself (one-pager, demo script, pilot proposal, NDA and data checklist, outreach emails) lives in Jared's Claude Docs, not in this repo, because it is written for one person's outreach.
