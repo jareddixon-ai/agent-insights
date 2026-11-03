@@ -2,7 +2,7 @@
 
 [![tests](https://github.com/jareddixon-ai/agent-insights/actions/workflows/tests.yml/badge.svg)](https://github.com/jareddixon-ai/agent-insights/actions/workflows/tests.yml)
 
-Coaching tool for real estate brokers. It shows a brokerage how well each agent does for clients: what homes sold for versus what they were worth, what buyers paid, and how often an agent's offers win. The public version runs on **fake data only** (Santa Barbara-style prices, California tax records). A brokerage runs a private copy on its own data. [Live demo on fake data](https://agent-insights-qctsf9jrkaqx4saj4vs72g.streamlit.app).
+Coaching tool for real estate brokers. It shows a brokerage how well each agent does for clients: what homes sold for versus what they were worth, what buyers paid, and how often an agent's offers win. The public version runs on **fake data only** (Santa Barbara-style prices, California tax records). A brokerage runs a private copy on its own data. [Live demo on fake data](https://brokerage-evaluation.streamlit.app).
 
 Results are framed as coaching, not a league table: every score is a percent versus the average agent, with an honest range. A range that includes 0 means "not clearly different from average yet".
 
@@ -194,7 +194,7 @@ Selection bias, small samples, market timing, list-price games, hidden home qual
 
 ## Public demo and pitch kit
 
-**Public demo:** [agent-insights-qctsf9jrkaqx4saj4vs72g.streamlit.app](https://agent-insights-qctsf9jrkaqx4saj4vs72g.streamlit.app) (fake data only). The dashboard is hosted for free on Streamlit Community Cloud straight from this repo (main file `app/coaching_app.py`, Python 3.12). Generated data is never committed, so the hosted app reads `demo/`: three small fake files (`scorecards.csv`, `trends.csv`, `sale_detail.csv`) written by `python src/build_demo.py` with the same seed and 1,000 bootstrap resamples as "Run it". A faster rebuild with 200 resamples moves one agent across the line (7 Strengths instead of 6), so the demo uses the saved snapshot instead, and a test checks it still matches. The app reads `demo/` only when `data/fake/` has no scores and no private folder is set; a private copy never falls back to fake numbers.
+**Public demo:** [brokerage-evaluation.streamlit.app](https://brokerage-evaluation.streamlit.app) (fake data only). The dashboard is hosted for free on Streamlit Community Cloud straight from this repo (main file `app/coaching_app.py`, Python 3.12). Generated data is never committed, so the hosted app reads `demo/`: three small fake files (`scorecards.csv`, `trends.csv`, `sale_detail.csv`) written by `python src/build_demo.py` with the same seed and 1,000 bootstrap resamples as "Run it". A faster rebuild with 200 resamples moves one agent across the line (7 Strengths instead of 6), so the demo uses the saved snapshot instead, and a test checks it still matches. The app reads `demo/` only when `data/fake/` has no scores and no private folder is set; a private copy never falls back to fake numbers.
 
 **Tests on every push.** `.github/workflows/tests.yml` runs the full test suite on GitHub after every push (the badge at the top). It needs no secrets: the tests build their own fake data.
 
