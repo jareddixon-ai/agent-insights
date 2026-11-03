@@ -1,13 +1,13 @@
-"""Step 6-2: two or three coaching points for one agent, written from their row in rankings.csv.
+"""Step 6-2: two or three talking points for one agent, for the broker's coaching brief, written from their row in scorecards.csv.
 
 Rules (each one is tested in tests/test_phase6.py):
-  1. A strength or a focus area is only named when the 95% range supports it (the whole range
+  1. A Strength or Room to grow is only named when the 95% range supports it (the whole range
      is above 0, or the whole range is below 0), and only for a part that passed validation
      and counts in the coaching index (weight above 0 in config/scoring.json).
   2. Context-only numbers (buyer score, offer score, speed, list price vs value, offers attracted)
      are worded as "Worth a look", never as a verdict, and only raised when their range is clearly
      away from 0. Otherwise there is nothing to look at.
-  3. Every point is one sentence an agent would understand.
+  3. Every point is one sentence a broker can say out loud in a one-on-one.
 If fewer than 2 points qualify, honest fallbacks fill in ("not clearly different from average
 yet", or "few listings, so luck still moves the score"). Never more than 3.
 """
@@ -46,28 +46,28 @@ def strength_of_signal(row, name, score_col):
 # Context-only items: (name used for the range columns, score column, sentence when above 0, below 0).
 CONTEXT = [
     ("speed", "speed_vs_similar",
-     "Worth a look: your listings took about {v} longer to sell than similar homes; is that a pricing choice or something to change?",
-     "Worth a look: your listings sold about {v} faster than similar homes; worth checking that a quick sale didn't leave money on the table."),
+     "Worth a look: this agent's listings took about {v} longer to sell than similar homes; is that a pricing choice or something to talk about?",
+     "Worth a look: this agent's listings sold about {v} faster than similar homes; worth checking that a quick sale didn't leave money on the table."),
     ("list_vs_value", "list_vs_value",
-     "Worth a look: you usually list about {v} above our estimate of the home's value, which in this data goes with slower sales and price cuts, not higher final prices.",
-     "Worth a look: you usually list about {v} below our estimate of the home's value, which draws more offers but in this data does not raise the final price."),
+     "Worth a look: this agent usually lists about {v} above our estimate of the home's value, which in this data goes with slower sales and price cuts, not higher final prices.",
+     "Worth a look: this agent usually lists about {v} below our estimate of the home's value, which draws more offers but in this data does not raise the final price."),
     ("offers_attracted", "offers_attracted",
-     "Worth a look: your listings drew about {v} more offers than similar listings priced alike; worth sharing how you market them.",
-     "Worth a look: your listings drew about {v} fewer offers than similar listings priced alike; worth reviewing how they are marketed."),
+     "Worth a look: this agent's listings drew about {v} more offers than similar listings priced alike; worth asking how they market them.",
+     "Worth a look: this agent's listings drew about {v} fewer offers than similar listings priced alike; worth reviewing how they are marketed."),
 ]
 PART_CONTEXT = {
-    "buyer": ("Worth a look: your buyers paid about {v} less than the model expected, but buyer scores aren't reliable yet, so treat it as a conversation starter.",
-              "Worth a look: your buyers paid about {v} more than the model expected, but buyer scores aren't reliable yet, so review a few of those deals together first."),
-    "offer_win": ("Worth a look: at the same price and terms, your offers' chance of winning a typical 3-offer contest is about {v} higher than average; worth asking what you do differently.",
-                  "Worth a look: at the same price and terms, your offers' chance of winning a typical 3-offer contest is about {v} lower than average; worth reviewing how your offers are put together."),
+    "buyer": ("Worth a look: this agent's buyers paid about {v} less than the model expected, but buyer scores aren't reliable yet, so treat it as a conversation starter.",
+              "Worth a look: this agent's buyers paid about {v} more than the model expected, but buyer scores aren't reliable yet, so review a few of those deals together first."),
+    "offer_win": ("Worth a look: at the same price and terms, this agent's offers' chance of winning a typical 3-offer contest is about {v} higher than average; worth asking what they do differently.",
+                  "Worth a look: at the same price and terms, this agent's offers' chance of winning a typical 3-offer contest is about {v} lower than average; worth reviewing how their offers are put together."),
 }
 VERDICT = {
-    "seller": ("Strength: your listings sold for about {v} more than similar homes would predict, and even the low end of your range is above the average agent.",
-               "Focus area: your listings sold for about {v} less than similar homes would predict, and even the high end of your range is below the average agent."),
-    "buyer": ("Strength: your buyers paid about {v} less than similar homes would predict, and even the low end of your range is above the average agent.",
-              "Focus area: your buyers paid about {v} more than similar homes would predict, and even the high end of your range is below the average agent."),
-    "offer_win": ("Strength: at the same price and terms, your offers' chance of winning a typical 3-offer contest is about {v} higher than average, and the whole range agrees.",
-                  "Focus area: at the same price and terms, your offers' chance of winning a typical 3-offer contest is about {v} lower than average, and the whole range agrees."),
+    "seller": ("Strength: this agent's listings sold for about {v} more than similar homes would predict, and even the low end of their range is above the average agent.",
+               "Room to grow: this agent's listings sold for about {v} less than similar homes would predict, and even the high end of their range is below the average agent."),
+    "buyer": ("Strength: this agent's buyers paid about {v} less than similar homes would predict, and even the low end of their range is above the average agent.",
+              "Room to grow: this agent's buyers paid about {v} more than similar homes would predict, and even the high end of their range is below the average agent."),
+    "offer_win": ("Strength: at the same price and terms, this agent's offers' chance of winning a typical 3-offer contest is about {v} higher than average, and the whole range agrees.",
+                  "Room to grow: at the same price and terms, this agent's offers' chance of winning a typical 3-offer contest is about {v} lower than average, and the whole range agrees."),
 }
 
 
@@ -76,7 +76,7 @@ def value_text(name, x):
 
 
 def coaching_points(row, weights, validation, small_sample=5):
-    """row: one agent's row from rankings.csv (a pandas Series). Returns a list of (label, sentence)."""
+    """row: one agent's row from scorecards.csv (a pandas Series). Returns a list of (label, sentence)."""
     verdicts, context = [], []
     for name in ["seller", "buyer", "offer_win"]:
         score = row.get(f"{name}_score")
@@ -88,7 +88,7 @@ def coaching_points(row, weights, validation, small_sample=5):
             continue
         v = value_text(name, score)
         if counted:
-            label = "Strength" if side > 0 else "Focus area"
+            label = "Strength" if side > 0 else "Room to grow"
             verdicts.append((strength_of_signal(row, name, f"{name}_score"), label,
                              VERDICT[name][0 if side > 0 else 1].format(v=v)))
         elif name in PART_CONTEXT:
@@ -107,7 +107,7 @@ def coaching_points(row, weights, validation, small_sample=5):
     if n == 0:
         headline.append(("Note", "No listings on record yet, so there is no seller score; the other numbers here are context only."))
     elif clear(row, "seller") == 0 and weights.get("seller", 0) > 0:
-        headline.append(("Not clearly different", f"Your seller result ({signed(row['seller_score'])}) is not clearly "
+        headline.append(("Not clearly different", f"This agent's seller result ({signed(row['seller_score'])}) is not clearly "
                          f"different from average yet, because its range ({signed(row['seller_low'])} to "
                          f"{signed(row['seller_high'])}) includes 0."))
     points = [(lab, txt) for _, lab, txt in sorted(verdicts, reverse=True)] + headline
@@ -117,7 +117,7 @@ def coaching_points(row, weights, validation, small_sample=5):
     # Honest fallbacks so there are always at least 2 points.
     fallbacks = []
     if 0 < n < 4 * small_sample:
-        fallbacks.append(("Note", f"With {n} listing{'s' if n != 1 else ''}, luck still moves your score a lot, "
+        fallbacks.append(("Note", f"With {n} listing{'s' if n != 1 else ''}, luck still moves this agent's score a lot, "
                                   f"so each new sale will make the picture sharper."))
     fallbacks.append(("Note", "Nothing else stands out clearly from average right now, which is the most common and honest result."))
     for fb in fallbacks:

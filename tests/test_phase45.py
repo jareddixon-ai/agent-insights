@@ -63,7 +63,7 @@ def test_bias_allowance_widens_every_range():
 
 
 def test_weight_zero_parts_are_context_only(scored_dir):
-    rankings = pd.read_csv(scored_dir / "rankings.csv", index_col="agent_id")
+    rankings = pd.read_csv(scored_dir / "scorecards.csv", index_col="agent_id")
     assert set(rankings["buyer_group"]) <= {"Context only", "No data"}
     assert set(rankings["offer_win_group"]) <= {"Context only", "No data"}
     assert "Context only" not in set(rankings["seller_group"])

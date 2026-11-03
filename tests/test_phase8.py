@@ -18,14 +18,14 @@ DEMO = ROOT / "demo"
 
 def test_demo_snapshot_matches_readme_calls():
     """The committed demo must show the same calls the README and pitch kit quote."""
-    t = pd.read_csv(DEMO / "rankings.csv", index_col="agent_id")
+    t = pd.read_csv(DEMO / "scorecards.csv", index_col="agent_id")
     counts = t["index_group"].value_counts().to_dict()
     assert len(t) == 150
-    assert counts == {"Not clearly different from average": 135, "Clearly below average": 8,
-                      "Clearly above average": 6, "No data": 1}
+    assert counts == {"Not clearly different from average": 135, "Room to grow": 8,
+                      "Strength": 6, "No data": 1}
     a133 = t.loc["A133"]   # the agent the demo script walks through
     assert (round(a133["seller_low"], 3), round(a133["seller_high"], 3), a133["seller_n"]) == (0.047, 0.107, 62)
-    assert a133["index_group"] == "Clearly above average"
+    assert a133["index_group"] == "Strength"
     assert set(t["buyer_group"]) <= {"Context only", "No data"}
     assert set(t["offer_win_group"]) <= {"Context only", "No data"}
 
@@ -33,8 +33,8 @@ def test_demo_snapshot_matches_readme_calls():
 def test_demo_snapshot_is_the_seed_42_pipeline(scored_dir):
     """Point scores don't depend on the bootstrap, so they must equal a fresh build of seed 42.
     That proves the snapshot is the fake pipeline's output, not edited numbers."""
-    demo = pd.read_csv(DEMO / "rankings.csv", index_col="agent_id").sort_index()
-    fresh = pd.read_csv(scored_dir / "rankings.csv", index_col="agent_id").sort_index().round(4)
+    demo = pd.read_csv(DEMO / "scorecards.csv", index_col="agent_id").sort_index()
+    fresh = pd.read_csv(scored_dir / "scorecards.csv", index_col="agent_id").sort_index().round(4)
     for col in ["seller_score", "seller_n", "buyer_score", "buyer_n"]:
         pd.testing.assert_series_equal(demo[col], fresh[col], check_names=False, atol=1e-4)
     trends = pd.read_csv(DEMO / "trends.csv")
@@ -58,7 +58,7 @@ def test_choose_data(tmp_path):
     assert folder == tmp_path / "demo" and is_demo
     # 3. Scores in data/fake: use them.
     (tmp_path / "data" / "fake").mkdir(parents=True)
-    (tmp_path / "data" / "fake" / "rankings.csv").write_text("agent_id\n")
+    (tmp_path / "data" / "fake" / "scorecards.csv").write_text("agent_id\n")
     folder, is_demo = build_demo.choose_data({}, root=tmp_path)
     assert folder == tmp_path / "data" / "fake" and not is_demo
 
@@ -70,7 +70,7 @@ def test_app_opens_on_demo_snapshot(monkeypatch):
     at = AppTest.from_file(str(APP), default_timeout=60).run()
     assert not at.exception
     assert any("Public demo" in i.value for i in at.info)
-    assert not any("rankings.csv not found" in e.value for e in at.error)
+    assert not any("scorecards.csv not found" in e.value for e in at.error)
 
 
 def test_ci_workflow_and_badge():

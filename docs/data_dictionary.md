@@ -106,29 +106,29 @@ All scores are fractions: 0.012 means 1.2%. Every score has a 95% range (`_low`,
 - `predictions.csv` (3-1): one row per sale. `predicted_price` = what the home-only model expected at the sold date, `predicted_at_list` = at the list date. Both are cross-validated (the model never saw that home's price). `pct_error` = sold / predicted - 1.
 - `speed_pricing.csv` (3-2): one row per listing agent. `speed_vs_similar` (-0.10 = sells 10% faster than similar homes), `list_vs_value` (+0.03 = first list price usually 3% above model value), `typical_list_miss`, `share_with_price_cut`. Descriptive only.
 - `bootstrap_scores.csv` (3-3): seller and buyer scores with formula ranges (2C), bootstrap ranges (1,000 resamples), `under_5_deals` flag, and `fixed_k_score` (k = 10) for comparison.
-- `rankings.csv` (3-4): the coaching table. Per agent: seller score, buyer savings, offer win rate (versus the brokerage average), each with a range and a group (clearly above, not clearly different, clearly below), the blended `coaching_index` with its range and `index_group`, `low_data_flag`, and speed and pricing as context. Weights and range choice live in `config/scoring.json`.
-- `stress_test.csv` (3-0): how naive ranking and the model hold up when selection bias is flipped.
-- `validation_summary.csv` (4-0, fake data only): per side, rank agreement and correlation with true skill (shrunk and raw), average miss in percentage points, share of 95% ranges that caught the truth for each range type, and how strongly the miss follows hidden home value.
+- `scorecards.csv` (3-4): the coaching table. Per agent: seller score, buyer savings, offer win rate (versus the brokerage average), each with a range and a call (Strength, not clearly different, Room to grow), the blended `coaching_index` with its range and `index_group`, `low_data_flag`, and speed and pricing as context. Weights and range choice live in `config/scoring.json`.
+- `stress_test.csv` (3-0): how naive ordering and the model hold up when selection bias is flipped.
+- `validation_summary.csv` (4-0, fake data only): per side, order agreement and correlation with true skill (shrunk and raw), average miss in percentage points, share of 95% ranges that caught the truth for each range type, and how strongly the miss follows hidden home value.
 - `validation_by_deals.csv` (4-1): the same miss and range checks split by number of deals (1-4, 5-9, 10-19, 20-49, 50+), with shrinkage on and off.
 - `coverage_across_worlds.csv` (4-1): range coverage by number of deals across 5 fake worlds, with and without selection bias.
 - `time_split_check.csv` (4-1): scores from the first vs second half of the sales by date. `reliability` and `implied_accuracy` need no answer key; `actual_accuracy` uses it to show when the no-answer-key check can be fooled.
 
 Charts from `src/validate.py` are committed in `docs/`: `validation.png`, `accuracy_by_deals.png`, `stress_test.png`, `hidden_quality.png`.
-- `sale_history_test.csv` (4.5): seller and buyer rank agreement, leftover error, estate-specialist bias and range coverage in 4 settings (Phase 4 data, California without sale history, California with it, true value). Chart: `docs/sale_history.png`.
-- `rankings.csv` (since 4.5): parts with weight 0 in `config/scoring.json` (now buyer and offer_win) have group "Context only". Seller and buyer ranges include the bias allowance.
+- `sale_history_test.csv` (4.5): seller and buyer order agreement, leftover error, estate-specialist bias and range coverage in 4 settings (Phase 4 data, California without sale history, California with it, true value). Chart: `docs/sale_history.png`.
+- `scorecards.csv` (since 4.5): parts with weight 0 in `config/scoring.json` (now buyer and offer_win) have group "Context only". Seller and buyer ranges include the bias allowance.
 
 ### Phase 5 outputs
 
-- `condition_test.csv` (5-0): seller and buyer rank agreement, clear calls and how many were right, for each kind and accuracy of condition data, in 3 kinds of world. `condition_why.csv`: what the buyer side is missing (perfect quality, every part of value in the wrong shape, true value). Chart: `docs/condition_data.png`.
+- `condition_test.csv` (5-0): seller and buyer order agreement, clear calls and how many were right, for each kind and accuracy of condition data, in 3 kinds of world. `condition_why.csv`: what the buyer side is missing (perfect quality, every part of value in the wrong shape, true value). Chart: `docs/condition_data.png`.
 - `offer_scores.csv` (5-2): per agent, the fair offer score (`score`, `low`, `high`: win-chance points versus the average agent in a typical 3-offer contest, on the same home at the same price and terms), `offers` in contests, and offers attracted per listing agent: `attract_home_*` (vs similar homes) and `attract_fair_*` (vs similar homes at a similar list price), as fractions (+0.2 = 20% more offers).
-- `rankings.csv` (since 5): `offer_win_*` is the fair offer score (was the raw win rate). New context columns `offers_attracted`, `offers_attracted_low`, `offers_attracted_high`.
+- `scorecards.csv` (since 5): `offer_win_*` is the fair offer score (was the raw win rate). New context columns `offers_attracted`, `offers_attracted_low`, `offers_attracted_high`.
 - `offer_validation.csv` (5-4): raw win rate vs competition-adjusted vs fair offer score graded against the answer key in 3 kinds of world, range coverage, offers attracted, seller/offer error link, and the coaching index with and without the offer score. Chart: `docs/offer_validation.png`.
 - `offer_pdfs/` (5-3): fake offer PDFs (made-up names, 555-01xx phone numbers, example.com emails). `offers_extracted.csv`: what the extractor read back, with no personal details.
 
 ### Phase 6 outputs (dashboard)
 - `trends.csv` (6-0, `src/trends.py`): one row per agent and period. `kind` (year or half), `period` ("2025" or "2025 H1"), `score` (seller score vs the average agent in that period, shrunk), `low` / `high` (95% range incl. the bias allowance), `deals` (listings sold in the period), `small_sample` (under `small_sample` listings, 5 by default).
-- `speed_pricing.csv` and `rankings.csv` (since 6): every context number has a 95% range. `speed_low` / `speed_high`, `list_vs_value_low` / `list_vs_value_high` (about 1.25 x spread / sqrt(listings), spread = how far one agent's listings sit from their own median), `cut_low` / `cut_high` (Wilson interval for a share).
-- `config/scoring.json` (since 6): a `validation` block says which parts passed testing, with one sentence on why. The dashboard shows that sentence as a warning when a leader turns on a part that failed.
+- `speed_pricing.csv` and `scorecards.csv` (since 6): every context number has a 95% range. `speed_low` / `speed_high`, `list_vs_value_low` / `list_vs_value_high` (about 1.25 x spread / sqrt(listings), spread = how far one agent's listings sit from their own median), `cut_low` / `cut_high` (Wilson interval for a share).
+- `config/scoring.json` (since 6): a `validation` block says which parts passed testing, with one sentence on why. The dashboard shows that sentence as a warning when someone turns on a part that failed.
 
 ## Private copy (Phase 7)
 
@@ -137,7 +137,7 @@ A brokerage maps its own export to these columns in `config/column_mapping.json`
 | Group | Our columns | If missing |
 |---|---|---|
 | Sales, required | listing_id, zip, beds, baths, sqft, lot_sqft, year_built, assessed_value, list_date, sold_date, sold_price, listing_agent_id, buyer_agent_id | Can't score. The model needs these to estimate what each home was worth |
-| Sales, sale history | prior_sale_date, prior_sale_price | Scores run, but agents who list long-held homes look better than they are (fake data: rank agreement 0.74 to 0.60) |
+| Sales, sale history | prior_sale_date, prior_sale_price | Scores run, but agents who list long-held homes look better than they are (fake data: order agreement 0.74 to 0.60) |
 | Sales, context | original_list_price, num_price_changes, days_on_market | No speed or pricing context, no offers attracted |
 | Sales, optional | value_estimate, condition_rating | Without an independent value estimate, buyer scores stay context only |
 | Agents | agent_id, office, team, years_licensed | No roster: office shows as "Unknown", no team filter |
@@ -151,11 +151,20 @@ Rules the check applies:
 - A value estimate whose median miss against the sale price is under 1.5% gets a leak warning: it was probably made with the price in hand, like a loan appraisal.
 - Under 200 usable sales blocks scoring.
 
-**What a private copy stores** (`<data_folder>/standard/`): only the columns above, in our names. `scored/` holds `rankings.csv`, `trends.csv`, `predictions.csv`, `bootstrap_scores.csv`, `speed_pricing.csv`, `offer_scores.csv`, same layout as `data/fake/`.
+**What a private copy stores** (`<data_folder>/standard/`): only the columns above, in our names. `scored/` holds `scorecards.csv`, `trends.csv`, `predictions.csv`, `bootstrap_scores.csv`, `speed_pricing.csv`, `offer_scores.csv`, same layout as `data/fake/`.
 
 **What it never reads or stores:** any column not in the mapping. That includes addresses (`address` is not part of private mode), client names, emails, phones, notes and remarks. The check counts unmapped columns whose header looks personal, without printing their names or values.
 
 **Demo:** `src/make_fake_export.py` writes `data/fake/export/` ("Closed Sales Export.csv", "Agent Roster.csv"): renamed columns, prices as text, US-style dates, duplicates, unsold rows, no sale history, no years licensed, no offers, and made-up addresses, names, emails, phones and remarks. `config/column_mapping_demo.json` maps it.
 
 ### Phase 7 settings
-- `config/scoring.json` `min_peers` (10): the report card shows the anonymous peer chart only when at least this many other agents have that score. The app never goes below 10.
+- `config/scoring.json` `min_peers` (10): the coaching brief's optional comparison with other agents (off by default) shows anonymous ticks only when at least this many other agents have that score. The app never goes below 10.
+
+## Phase 9 additions (broker-only reframe)
+
+- `sale_detail.csv` (`src/sale_detail.py`): one row per sale. `listing_id` (the sale ID), `year`, `listing_agent_id`, `buyer_agent_id`, `sold_vs_model` (sold price over the home-only model's expected price, minus 1: a cross-validated prediction from a model that never saw the sale), `n_similar` (other sales in the same zip with an expected value within 30%), `low_confidence` (fewer than 30 similar sales). An agent gets the **Low confidence** label when more than a third of their listings are low confidence. No address, no name, no date beyond the year. It explains the scores and changes none of them. In a private copy the sale ID is the brokerage's `listing_id` column; a brokerage may map a random code instead of an MLS number.
+- **Building a track record** is shown instead of a score for an agent with under 5 sales (`small_sample` in `config/scoring.json`; `low_data_flag` in `scorecards.csv`). The numbers stay in `scorecards.csv`; the dashboard does not show them.
+- `data/private/context_notes.csv` (`src/context_notes.py`, git-ignored, or the path in `AGENT_INSIGHTS_NOTES`): broker notes as tags. Columns `saved_at`, `agent_id`, `sale_id`, `kind` (`specialty`, `goal`, `looks_wrong`), `value` (a fixed list: specialties; Price, Speed or Certainty; yes or no). No free text. Read only by the coaching brief, never by scoring, and never printed or logged.
+- `config/disclosure.json` (`src/disclosure.py`): `disclosure` is `broker_only` (default) or `agents_told`. It changes the wording of one sentence in the owner readout and the README. It never reaches scoring.
+- `validation_report.txt` (`src/validate_private.py`): split-half check on the seller side only, counts and summary numbers only. The buyer side is refused.
+- `deletion_log_<date>.txt` (`src/delete_private.py`): file names and sizes only, written outside the deleted folder.

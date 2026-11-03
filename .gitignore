@@ -221,3 +221,6 @@ data/private/
 # Generated fake data (rebuild with src/generate_fake_data.py) and Mac folder files
 data/fake/
 .DS_Store
+
+# Deletion logs from src/delete_private.py (file names and sizes only, still not for the repo)
+deletion_log_*.txt

@@ -5,7 +5,7 @@
   2. Stores ONLY the columns the metrics use, in our names, in <data_folder>/standard/.
      Never stored: addresses, client names, emails, phones, notes, any unmapped column.
   3. Scores with the same code as the fake-data pipeline and writes <data_folder>/scored/:
-     rankings.csv and trends.csv (what the dashboard reads), plus the pieces behind them.
+     scorecards.csv and trends.csv (what the dashboard reads), plus the pieces behind them.
      Weights and the "validation" block come from config/scoring.json, unchanged: buyer and offer
      scores stay context only until a private validation shows they work on this data.
 
@@ -21,6 +21,7 @@ import pandas as pd
 import bootstrap_ranges as br
 import offer_metrics
 import price_model
+import sale_detail
 import score_agents
 import speed_and_pricing
 import trends
@@ -62,7 +63,8 @@ def score(tables, turned_off, cfg, n_resamples=br.N_RESAMPLES):
         offer = empty(OFFER_SCORE_COLS)
     table = score_agents.build_table(boot, offer, speed, tables["agents"], cfg)
     return {"predictions": pred, "bootstrap_scores": boot, "speed_pricing": speed, "offer_scores": offer,
-            "rankings": table, "trends": trends.all_trends(sales, cfg)}
+            "scorecards": table, "trends": trends.all_trends(sales, cfg),
+            "sale_detail": sale_detail.build_sale_detail(sales, pred)}
 
 
 def main(argv=None):
@@ -91,8 +93,9 @@ def main(argv=None):
     out = score(report.tables, report.turned_off, score_agents.load_config(), args.resamples)
     for name, t in out.items():
         index = name not in {"predictions", "trends"}
-        t.round(4).to_csv(scored / f"{name}.csv", index=index, index_label="agent_id" if name != "bootstrap_scores" else None)
-    groups = out["rankings"]["index_group"].value_counts()
+        label = {"bootstrap_scores": None, "sale_detail": "listing_id"}.get(name, "agent_id")
+        t.round(4).to_csv(scored / f"{name}.csv", index=index, index_label=label)
+    groups = out["scorecards"]["index_group"].value_counts()
     print("Coaching index: " + ", ".join(f"{k} {v}" for k, v in groups.items()))
     print(f"Saved to {scored}. Open the dashboard with:\n"
           f"  AGENT_INSIGHTS_DATA=\"{scored}\" streamlit run app/coaching_app.py")

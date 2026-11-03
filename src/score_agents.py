@@ -1,4 +1,4 @@
-"""Step 3-4: one coaching table per agent, saved as data/fake/rankings.csv.
+"""Step 3-4: one coaching table per agent, saved as data/fake/scorecards.csv.
 
 Brings together:
   seller score  : % above/below what the home predicts when the agent lists it (2B + 2C + 3-3)
@@ -60,8 +60,8 @@ def table_range(t, cfg):
 
 
 def group(low, high):
-    return np.where(low > 0, "Clearly above average",
-                    np.where(high < 0, "Clearly below average", "Not clearly different from average"))
+    return np.where(low > 0, "Strength",
+                    np.where(high < 0, "Room to grow", "Not clearly different from average"))
 
 
 PARTS = ["seller", "buyer", "offer_win"]
@@ -72,7 +72,7 @@ def apply_weights(table, weights):
 
     Each part is first divided by how much agents typically differ on it, so 1 point = one
     typical step on any part. A part with weight 0 is labeled 'Context only' (never called
-    clearly above or below). The dashboard calls this again when a leader moves a weight slider.
+    a Strength or Room to grow call). The dashboard calls this again when someone moves a weight slider in Explore.
     Returns a copy; the input table needs {part}_score/_low/_high for every part."""
     table = table.copy()
     num, den, var = 0.0, 0.0, 0.0
@@ -151,12 +151,12 @@ def grade(table, skills, cfg):
     true_index = true_blend(sk, cfg["weights"])
     agree = table["coaching_index"].rank().corr(true_index.rank())
     goal = table["coaching_index"].rank().corr(true_blend(sk, GOAL_WEIGHTS).rank())
-    above = table["index_group"] == "Clearly above average"
-    below = table["index_group"] == "Clearly below average"
+    above = table["index_group"] == "Strength"
+    below = table["index_group"] == "Room to grow"
     print(f"Coaching index rank agreement with the true blend of skills: {agree:.2f} "
           f"(with the full goal blend {GOAL_WEIGHTS}: {goal:.2f})")
-    print(f"Called clearly above average: {above.sum()} agents, {(true_index[above] > 0).mean():.0%} truly above average")
-    print(f"Called clearly below average: {below.sum()} agents, {(true_index[below] < 0).mean():.0%} truly below average")
+    print(f"Called a Strength (clearly above average): {above.sum()} agents, {(true_index[above] > 0).mean():.0%} truly above average")
+    print(f"Called Room to grow (clearly below average): {below.sum()} agents, {(true_index[below] < 0).mean():.0%} truly below average")
     print(f"Not clearly different from average: {(~above & ~below).sum()} agents")
 
 
@@ -176,8 +176,8 @@ def main():
     skills_file = DATA / "true_skills.csv"
     if skills_file.exists():  # only true for fake data
         grade(table, pd.read_csv(skills_file).set_index("agent_id"), cfg)
-    table.round(4).to_csv(DATA / "rankings.csv", index_label="agent_id")
-    print("Saved rankings.csv")
+    table.round(4).to_csv(DATA / "scorecards.csv", index_label="agent_id")
+    print("Saved scorecards.csv")
 
 
 if __name__ == "__main__":

@@ -78,7 +78,7 @@ def test_coaching_table_is_honest(data_dir):
     assert "Not clearly different from average" in set(t["index_group"])   # the honest middle exists
     t = t[t["coaching_index"].notna()]                                       # agents with no listings have no index
     assert (t["index_low"] <= t["coaching_index"]).all() and (t["coaching_index"] <= t["index_high"]).all()
-    clear_above = t["index_group"] == "Clearly above average"
+    clear_above = t["index_group"] == "Strength"
     assert (t.loc[clear_above, "index_low"] > 0).all()
     skills = read(data_dir, "true_skills.csv").set_index("agent_id").reindex(t.index)
     assert t["coaching_index"].rank().corr(skills["seller_premium"].rank()) > 0.4

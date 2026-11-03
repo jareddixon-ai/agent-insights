@@ -1,13 +1,13 @@
 """Phase 8: build everything the dashboard needs from fake data, and save the public demo snapshot.
 
 Generated data is never committed (data/fake/ is git-ignored). The hosted demo (Streamlit Community
-Cloud) still needs something to show the moment someone clicks the link, so we commit two small
-FAKE files in demo/: rankings.csv and trends.csv. The app reads them only when data/fake/ has no
+Cloud) still needs something to show the moment someone clicks the link, so we commit three small
+FAKE files in demo/: scorecards.csv, trends.csv and sale_detail.csv. The app reads them only when data/fake/ has no
 scores and no private folder is set.
 
 Same steps and seed as the README "Run it" section, in order:
 generate_fake_data, price_model, speed_and_pricing, bootstrap_ranges (1,000 resamples), offer_metrics,
-score_agents, trends. The bootstrap is seeded, so the snapshot repeats exactly.
+score_agents, trends, sale_detail. The bootstrap is seeded, so the snapshot repeats exactly.
 
 Why not a faster rebuild on the server? With 200 resamples instead of 1,000, one agent's call moves
 across the line (7 "clearly above" instead of 6). Resampling noise at the edge would make the demo
@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 DEMO = ROOT / "demo"
-SNAPSHOT_FILES = ["rankings.csv", "trends.csv"]
+SNAPSHOT_FILES = ["scorecards.csv", "trends.csv", "sale_detail.csv"]
 FULL_RESAMPLES = 1000
 
 
@@ -41,7 +41,7 @@ def choose_data(env=None, root=ROOT):
     if env.get("AGENT_INSIGHTS_DATA"):
         return Path(env["AGENT_INSIGHTS_DATA"]), False
     fake = Path(root) / "data" / "fake"
-    if (fake / "rankings.csv").exists():
+    if (fake / "scorecards.csv").exists():
         return fake, False
     return Path(root) / "demo", True
 
@@ -55,12 +55,13 @@ def build(n_resamples=FULL_RESAMPLES, quiet=True):
     import bootstrap_ranges
     import offer_metrics
     import price_model
+    import sale_detail
     import score_agents
     import speed_and_pricing
     import trends
 
     steps = [price_model.main, speed_and_pricing.main, lambda: bootstrap_ranges.main(n_resamples),
-             offer_metrics.main, score_agents.main, trends.main]
+             offer_metrics.main, score_agents.main, trends.main, sale_detail.main]
     sink = io.StringIO() if quiet else sys.stdout
     with contextlib.redirect_stdout(sink):
         for step in steps:

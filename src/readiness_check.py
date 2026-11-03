@@ -228,11 +228,11 @@ def sales_check(folder, mapping, report):
     if no_buyer > 0:
         report.found.append(f"{no_buyer:.0%} of sales have no buyer agent; those sales give no buyer-side credit.")
 
-    # Agent IDs are shown to leaders on the dashboard, so they must be codes, not names or emails.
+    # Agent IDs appear in the team overview, so they must be codes, not names or emails.
     ids = pd.concat([clean["listing_agent_id"], clean["buyer_agent_id"]])
     if ids.str.contains(r"\s|@", regex=True).any():
         report.blockers.append("Some agent IDs contain spaces or an @, so they may be names or emails. The dashboard "
-                               "shows agent IDs to leaders: replace them with codes (like A001) before scoring.")
+                               "shows agent IDs in the team overview: replace them with codes (like A001) before scoring.")
 
     # Optional parts, and what missing them turns off.
     if all(c in clean for c in SALE_HISTORY):
@@ -241,7 +241,7 @@ def sales_check(folder, mapping, report):
     else:
         report.missing.append("No last sale date and price. In California, tax values lag far behind for long-held "
                               "homes, so agents who list them look better than they are. In our fake data, dropping the "
-                              "last sale nearly doubled the spread of seller scores and cut rank agreement with true "
+                              "last sale nearly doubled the spread of seller scores and cut order agreement with true "
                               "skill from 0.74 to 0.60. Scores still run, with that bias; county records have it.")
     if all(c in clean for c in CONTEXT):
         report.found.append("List price, price changes and days on market are there: speed and pricing context is on.")
@@ -262,7 +262,7 @@ def sales_check(folder, mapping, report):
     else:
         report.turned_off.add("buyer_scores")
         report.missing.append("No independent value estimate (like a pre-listing appraisal or broker price opinion "
-                              "made before the sale): buyer scores stay context only, never 'clearly above or below'.")
+                              "made before the sale): buyer scores stay context only, never called a Strength or Room to grow.")
     if "condition_rating" in clean:
         report.watch.append("A condition rating barely helped in testing. If the listing agent wrote it, drop it: "
                             "it can soak up the agent's own result.")

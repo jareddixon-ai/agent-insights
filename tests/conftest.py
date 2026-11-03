@@ -49,7 +49,9 @@ def scored_dir(tmp_path_factory, data_dir):
     speed = speed_and_pricing.speed_and_pricing(sales, pred)
     agents = pd.read_csv(out / "agents.csv", keep_default_na=False)
     table = score_agents.build_table(boot, offer, speed, agents, score_agents.load_config())
-    table.to_csv(out / "rankings.csv", index_label="agent_id")
+    table.to_csv(out / "scorecards.csv", index_label="agent_id")
+    import sale_detail
+    sale_detail.build_sale_detail(sales, pred).to_csv(out / "sale_detail.csv")
     import trends
     trends.all_trends(sales, score_agents.load_config()).to_csv(out / "trends.csv", index=False)
     stress = pd.DataFrame({label: stress_test.run_one(42, strength, oracle)

@@ -1,4 +1,4 @@
-"""Phase 4 tests: validation numbers and charts, and the Streamlit app reading rankings.csv."""
+"""Phase 4 tests: validation numbers and charts, and the Streamlit app reading scorecards.csv."""
 
 from pathlib import Path
 
@@ -59,17 +59,18 @@ def test_app_shows_an_agent_from_rankings(scored_dir, monkeypatch):
     at = AppTest.from_file(str(APP), default_timeout=30).run()
     assert not at.exception
     assert at.title[0].value == "Agent coaching view"
-    assert at.metric[0].label == "Coaching index"
+    assert at.metric[0].label == "Seller side"                      # the card leads with the seller percent (Phase 9)
     first = at.sidebar.selectbox[0].value
-    at.sidebar.selectbox[0].select(at.sidebar.selectbox[0].options[-1]).run()   # pick another agent
-    assert not at.exception and at.sidebar.selectbox[0].value != first
-    rankings = pd.read_csv(scored_dir / "rankings.csv", index_col="agent_id")
-    shown = at.sidebar.selectbox[0].value
-    assert at.metric[0].value == f"{rankings.loc[shown, 'coaching_index']:+.2f}"
+    scorecards = pd.read_csv(scored_dir / "scorecards.csv", index_col="agent_id")
+    other = scorecards["seller_n"].idxmax()                           # an agent with listings, so there is a seller percent
+    assert other != first
+    at.sidebar.selectbox[0].select(other).run()                       # pick another agent
+    assert not at.exception and at.sidebar.selectbox[0].value == other
+    assert at.metric[0].value == f"{round(scorecards.loc[other, 'seller_score'] * 100, 1) + 0.0:+.1f}%"
 
 
 def test_app_explains_missing_data(tmp_path, monkeypatch):
     monkeypatch.setenv("AGENT_INSIGHTS_DATA", str(tmp_path))
     at = AppTest.from_file(str(APP), default_timeout=30).run()
     assert not at.exception
-    assert "rankings.csv not found" in at.error[0].value
+    assert "scorecards.csv not found" in at.error[0].value

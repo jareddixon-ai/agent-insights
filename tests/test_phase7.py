@@ -188,7 +188,7 @@ def test_private_run_never_prints_or_stores_personal_details(private_run):
 
 def test_private_run_scores_like_the_pipeline(private_run, data_dir):
     folder, _ = private_run
-    r = pd.read_csv(folder / "scored" / "rankings.csv", index_col="agent_id")
+    r = pd.read_csv(folder / "scored" / "scorecards.csv", index_col="agent_id")
     assert len(r) == 150 and r["offer_win_score"].isna().all()               # no offers file: no offer score
     assert set(r["buyer_group"].dropna()) <= {"Context only", "No data"}
     truth = pd.read_csv(data_dir / "true_skills.csv").set_index("agent_id")["seller_premium"]
@@ -203,7 +203,9 @@ def test_private_scores_open_in_the_dashboard(private_run, monkeypatch):
     at = AppTest.from_file(str(APP), default_timeout=60).run()
     assert not at.exception
     assert len(at.dataframe[0].value) == 150
-    assert any(m.label == "Offer score" and m.value == "n/a" for m in at.tabs[1].metric)
+    big = pd.read_csv(folder / "scored" / "scorecards.csv", index_col="agent_id")["seller_n"].idxmax()
+    at.sidebar.selectbox[0].select(big).run()
+    assert any("Offer score:** no deals on record" in m.value for m in at.tabs[1].markdown)   # no offers file: nothing to show
 
 
 # ---- dashboard guard rails ----
@@ -234,9 +236,9 @@ def test_tested_weights_are_the_default_view(app):
 def small_brokerage(scored_dir, tmp_path, n_agents):
     folder = tmp_path / f"small_{n_agents}"
     folder.mkdir()
-    r = pd.read_csv(scored_dir / "rankings.csv", index_col="agent_id")
-    keep = r[r["seller_score"].notna()].index[:n_agents]
-    r.loc[keep].to_csv(folder / "rankings.csv")
+    r = pd.read_csv(scored_dir / "scorecards.csv", index_col="agent_id")
+    keep = r[r["seller_score"].notna() & ~r["low_data_flag"]].index[:n_agents]
+    r.loc[keep].to_csv(folder / "scorecards.csv")
     t = pd.read_csv(scored_dir / "trends.csv")
     t[t["agent_id"].isin(keep)].to_csv(folder / "trends.csv", index=False)
     return folder
@@ -247,8 +249,9 @@ def test_peer_chart_needs_10_peers(scored_dir, tmp_path, monkeypatch):
         monkeypatch.setenv("AGENT_INSIGHTS_DATA", str(small_brokerage(scored_dir, tmp_path, n_agents)))
         at = AppTest.from_file(str(APP), default_timeout=60).run()
         assert not at.exception
+        at.toggle(key="show_peers").set_value(True).run()                  # the peer chart is optional (off by default)
         caps = " ".join(c.value for c in at.tabs[1].caption)
-        assert ("Peer comparison hidden: fewer than 10" in caps) is hidden
+        assert ("Comparison hidden: fewer than 10" in caps) is hidden
         assert ("Grey ticks" in caps) is not hidden
 
 
@@ -263,6 +266,22 @@ def test_readme_has_ethics_and_private_copy_sections():
     readme = (ROOT / "README.md").read_text()
     for heading in ["## Ethics", "## Private copy"]:
         assert heading in readme
-    for phrase in ["not for firing", "Ranges measure luck, not bias", "see their own card",
+    for phrase in ["never used for pay, commission splits, hiring or firing", "Ranges measure luck, not bias", "decides what its agents are told",
+                   "does not give legal advice",
                    "readiness_check.py", "run_private.py", "column_mapping.json"]:
         assert phrase in readme, phrase
+
+
+# ---- Phase 9: the private split-half check, rehearsed on the messy export ----
+def test_private_split_half_on_the_messy_export_is_counts_only(private_run, capsys):
+    import validate_private
+    folder, _ = private_run
+    validate_private.main(["--mapping", str(DEMO), "--data", str(folder)])
+    out = capsys.readouterr().out
+    report = (folder / "validation_report.txt").read_text()
+    assert "split-half check" in report and "Buyer side: REFUSED" in report
+    for text in (out, report):
+        for marker in PERSONAL:
+            assert marker not in text, marker
+        assert not re.search(r"\bA\d{3}\b", text)                      # no agent code
+    assert "agents with at least 5 listings" in report.lower() or "Agents with at least 5 listings" in report

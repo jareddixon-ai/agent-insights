@@ -1,0 +1,5 @@
+{
+  "_about": "Disclosure setting (Phase 9). It changes WORDING ONLY: the sentence the readout and the README's Disclosure section use about whether the brokerage tells its agents they are scored. It never reaches the scoring code, the dashboard numbers or any file in scored/. The tool itself shows nothing to agents in either setting. What agents are told is the brokerage's decision, and this tool does not give legal advice.",
+  "disclosure": "broker_only",
+  "options": ["broker_only", "agents_told"]
+}
