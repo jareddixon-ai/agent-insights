@@ -39,7 +39,7 @@ DATA, IS_DEMO = choose_data()
 CONFIG = ROOT / "config" / "scoring.json"
 NOT_CLEAR = "Not clearly different from average"
 GROUPS = ["Strength", NOT_CLEAR, "Room to grow"]
-GROUP_COLORS = ["#2a78d6", "#898781", "#eb6834"]   # color follows the call, never an order
+GROUP_COLORS = ["#0369A1", "#94A3B8", "#C2410C"]   # color follows the call, never an order
 NO_TEAM = "No team"
 PARTS = {  # name in scorecards.csv -> (label, one-sentence meaning, how to show the number)
     "seller": ("Seller side", "How much more or less this agent's listings sold for than similar homes would predict.", "pct"),
@@ -92,9 +92,9 @@ def trend_chart(t):
     x = alt.X("period:O", title=None, sort=sorted(d["period"].unique()), axis=alt.Axis(labelAngle=0))
     base = alt.Chart(d).encode(x=x)
     zero = alt.Chart(pd.DataFrame({"y": [0]})).mark_rule(strokeDash=[4, 4], color="#898781").encode(y="y:Q")
-    ranges = base.mark_rule(strokeWidth=2, opacity=0.5, color="#2a78d6").encode(
+    ranges = base.mark_rule(strokeWidth=2, opacity=0.5, color="#0369A1").encode(
         y=alt.Y("low_pct:Q", title="Seller score, % vs average agent that period"), y2="high_pct:Q")
-    dots = base.mark_point(size=70, color="#2a78d6", strokeWidth=2, filled=True, stroke="#2a78d6").encode(
+    dots = base.mark_point(size=70, color="#0369A1", strokeWidth=2, filled=True, stroke="#0369A1").encode(
         y="score_pct:Q",
         fillOpacity=alt.condition("datum.small_sample", alt.value(0), alt.value(1)),
         shape=alt.Shape("sample:N", title=None, legend=alt.Legend(orient="top")),
@@ -140,7 +140,7 @@ def peer_chart(row, name, kind, peers):
     you = pd.DataFrame({"score": [row[f"{name}_score"] * 100], "low": [row[f"{name}_low"] * 100],
                         "high": [row[f"{name}_high"] * 100], "who": ["This agent"]})
     color = alt.Color("who:N", title=None, legend=None,
-                      scale=alt.Scale(domain=["Other agents (anonymous)", "This agent"], range=["#c3c2bd", "#2a78d6"]))
+                      scale=alt.Scale(domain=["Other agents (anonymous)", "This agent"], range=["#c3c2bd", "#0369A1"]))
     return (
         alt.Chart(dots).mark_tick(thickness=1, size=18, opacity=0.6).encode(
             x=alt.X("score:Q", title="% vs average" if kind == "pct" else "pts vs average"), color=color)
@@ -184,6 +184,20 @@ def sales_table(df, goals, flags):
 
 
 st.set_page_config(page_title="agent-insights", layout="wide")
+
+# Look and feel: a few CSS rules, static text only (no data is ever put into this block).
+# Contrast follows the design notes (body text 4.5:1 or better), keyboard focus is visible, and motion is
+# switched off for people who ask their computer for reduced motion.
+st.markdown("""<style>
+.block-container {padding-top: 2.2rem; max-width: 1180px;}
+h1 {font-weight: 700; letter-spacing: -0.02em; font-size: 2rem;}
+h4 {margin-top: 1.2rem; letter-spacing: -0.01em;}
+[data-testid="stMetricValue"] {font-size: 2.3rem; font-variant-numeric: tabular-nums;}
+[data-baseweb="tab"] {font-weight: 600;}
+[data-testid="stVerticalBlockBorderWrapper"] {background: #FFFFFF;}
+button:focus-visible, [role="tab"]:focus-visible, input:focus-visible {outline: 2px solid #0369A1; outline-offset: 2px;}
+@media (prefers-reduced-motion: reduce) {* {transition: none !important; animation: none !important;}}
+</style>""", unsafe_allow_html=True)
 st.title("Agent coaching view")
 st.caption("FAKE DATA. For the broker only. Every score compares the agent with the average agent at this brokerage, "
            "after adjusting for the home, zip and month. Each number has a 95% range (where the true value very likely "
@@ -207,11 +221,12 @@ team, brief = st.tabs(["Team overview", "Coaching brief"])   # the app opens on 
 
 # ================= Team overview =================
 with team:
-    f1, f2 = st.columns(2)
-    offices = sorted(full["office"].unique())
-    teams = sorted(full["team"].unique(), key=lambda t: (t == NO_TEAM, t))
-    pick_offices = f1.multiselect("Office", offices, default=offices, key="office")
-    pick_teams = f2.multiselect("Team", teams, default=teams, key="team")
+    with st.container(border=True):
+        f1, f2 = st.columns(2)
+        offices = sorted(full["office"].unique())
+        teams = sorted(full["team"].unique(), key=lambda t: (t == NO_TEAM, t))
+        pick_offices = f1.multiselect("Office", offices, default=offices, key="office")
+        pick_teams = f2.multiselect("Team", teams, default=teams, key="team")
 
     # Guard rail (Phase 7): the tested weights are the default view. Sliders appear only after someone
     # turns on "explore", so nobody judges people on an untested part by accident.
@@ -317,25 +332,26 @@ with brief:
     if tags["specialties"]:
         st.markdown("**Specialty tags (broker):** " + ", ".join(tags["specialties"]))
 
-    st.markdown("#### Seller result")
-    s_label, s_meaning, s_kind = PARTS["seller"]
-    show_peers = st.toggle("Compare with other agents, anonymously (optional)", value=False, key="show_peers",
-                           help="Grey ticks with no names, shown only when at least 10 other agents have the score.")
-    n_total = int(row["seller_n"] + row["buyer_n"])
-    if row["low_data_flag"]:
-        st.info(f"**{TRACK_RECORD}.** {n_total} sale{'s' if n_total != 1 else ''} on record "
-                f"({int(row['seller_n'])} as listing agent, {int(row['buyer_n'])} for a buyer). Scores need at least "
-                f"{cfg['small_sample']} sales before they mean much, so none is shown. The sales are listed below.")
-    elif pd.isna(row["seller_score"]):
-        st.write("**No data.** No listings on record yet, so there is no seller result.")
-    else:
-        top = st.columns([2, 1])
-        show_part(top[0], row, "seller", s_label, s_meaning, s_kind, show_peers)
-        if own is not None and len(own) and (own["low_confidence"].mean() > LOW_SHARE):
-            low_n = int(own["low_confidence"].sum())
-            st.warning(f"**Low confidence.** {low_n} of this agent's {len(own)} listings sit in thin parts of the market "
-                       f"(fewer than {MIN_SIMILAR} similar sales in the data), so the estimate of what those homes should "
-                       "sell for is less certain, and the range above may not fully show it.")
+    with st.container(border=True):
+        st.markdown("#### Seller result")
+        s_label, s_meaning, s_kind = PARTS["seller"]
+        show_peers = st.toggle("Compare with other agents, anonymously (optional)", value=False, key="show_peers",
+                               help="Grey ticks with no names, shown only when at least 10 other agents have the score.")
+        n_total = int(row["seller_n"] + row["buyer_n"])
+        if row["low_data_flag"]:
+            st.info(f"**{TRACK_RECORD}.** {n_total} sale{'s' if n_total != 1 else ''} on record "
+                    f"({int(row['seller_n'])} as listing agent, {int(row['buyer_n'])} for a buyer). Scores need at least "
+                    f"{cfg['small_sample']} sales before they mean much, so none is shown. The sales are listed below.")
+        elif pd.isna(row["seller_score"]):
+            st.write("**No data.** No listings on record yet, so there is no seller result.")
+        else:
+            top = st.columns([2, 1])
+            show_part(top[0], row, "seller", s_label, s_meaning, s_kind, show_peers)
+            if own is not None and len(own) and (own["low_confidence"].mean() > LOW_SHARE):
+                low_n = int(own["low_confidence"].sum())
+                st.warning(f"**Low confidence.** {low_n} of this agent's {len(own)} listings sit in thin parts of the market "
+                           f"(fewer than {MIN_SIMILAR} similar sales in the data), so the estimate of what those homes should "
+                           "sell for is less certain, and the range above may not fully show it.")
 
     if not row["low_data_flag"]:
         st.markdown("#### Talking points")

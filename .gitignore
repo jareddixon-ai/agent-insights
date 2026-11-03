@@ -224,3 +224,4 @@ data/fake/
 
 # Deletion logs from src/delete_private.py (file names and sizes only, still not for the repo)
 deletion_log_*.txt
+.claude/skills/

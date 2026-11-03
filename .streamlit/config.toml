@@ -1,0 +1,12 @@
+# Look of the dashboard (colors, font). Chosen with the ui-ux-pro-max design notes: calm navy and blue,
+# high-contrast text, light background. Nothing here touches scoring or data.
+[theme]
+base = "light"
+primaryColor = "#0369A1"
+backgroundColor = "#F8FAFC"
+secondaryBackgroundColor = "#E8ECF1"
+textColor = "#0F172A"
+font = "sans serif"
+
+[client]
+toolbarMode = "minimal"
